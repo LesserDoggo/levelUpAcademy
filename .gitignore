@@ -137,3 +137,26 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Expo
+.expo/
+.expo-shared/
+.expo-state
+.expo-shared/assets.json
+web-build/
+dist/
+
+# macOS system files
+.DS_Store
+Thumbs.db
+
+# Android native project (if you run prebuild)
+android/app/build/
+android/.gradle/
+android/local.properties/
+
+# iOS native project (if you run prebuild)
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/
+ios/*.xcodeproj/xcuserdata/
