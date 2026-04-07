@@ -54,16 +54,20 @@ export default function MenuInf() {
             </Pressable>
 
             <Pressable style={({ pressed }) => [mascara.abaMenu, pressed && mascara.abaPressionada]}
-                onPress={() => router.replace('/(tabs)/gameScreen')}
+                onPress={() => router.replace('/(tabs)/game')}
             >
                 <MaterialCommunityIcons name="gamepad-variant-outline" size={26} color="#7061ab" />
             </Pressable>
 
-            <Pressable style={({ pressed }) => [mascara.abaMenu, pressed && mascara.abaPressionada]}>
+            <Pressable style={({ pressed }) => [mascara.abaMenu, pressed && mascara.abaPressionada]}
+                onPress={() => router.replace('/(tabs)/rewards')}
+            >
                 <MaterialCommunityIcons name="gift-outline" size={26} color="#7061ab" />
             </Pressable>
 
-            <Pressable style={({ pressed }) => [mascara.abaMenu, pressed && mascara.abaPressionada]}>
+            <Pressable style={({ pressed }) => [mascara.abaMenu, pressed && mascara.abaPressionada]}
+                onPress={() => router.replace('/(tabs)/perfil')}
+            >
                 <MaterialCommunityIcons name="account-outline" size={26} color="#7061ab" />
             </Pressable>
         </View>

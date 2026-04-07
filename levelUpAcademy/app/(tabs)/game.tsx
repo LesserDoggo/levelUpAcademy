@@ -1,10 +1,11 @@
 import MenuInf from '@/components/Menu';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import conteudoStyle from '../css/conteudostyle';
 import mascara from '../css/style';
+import GameScreen from '../screens/gameScreen';
 
 
-export default function GameScreen() {
+export default function Game() {
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
 
@@ -12,7 +13,7 @@ export default function GameScreen() {
     <View style={[mascara.container, { flex: 1, paddingBottom: isDesktop ? 0 : 130, paddingLeft: isDesktop ? 90 : 0, paddingTop: isDesktop ? 0 : 30 }]}>
       <MenuInf />
       <View style={conteudoStyle.conteudo}>
-        <Text style={conteudoStyle.titulo}>Tela do jogo</Text>
+        <GameScreen />
       </View>
     </View >
   )

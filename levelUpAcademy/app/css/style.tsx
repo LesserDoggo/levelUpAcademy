@@ -11,7 +11,8 @@ const mascara = StyleSheet.create({
     padding: 0,
     zIndex: 0,
     width: windowWidth,
-    height: windowHeight
+    height: windowHeight,
+    fontFamily: 'Roboto-Regular',
   },
   paragraph: {
     margin: 24,
@@ -42,6 +43,7 @@ const mascara = StyleSheet.create({
     padding: 10,
     alignSelf: "center",
     color: '#bfc0d1',
+    fontFamily: 'Roboto-Regular',
   },
   botao: {
     width: "60%",
@@ -53,11 +55,13 @@ const mascara = StyleSheet.create({
     margin: 5,
     padding: 10,
     alignSelf: "center",
+    fontFamily: 'Roboto-Regular',
   },
   textoBotao: {
     color: "#ddd",
     fontWeight: "bold",
     alignSelf: "center",
+    fontFamily: 'Roboto-Regular',
   },
   botaoPressionado: {
     backgroundColor: "#7061ab",
@@ -71,6 +75,7 @@ const mascara = StyleSheet.create({
     alignSelf: "center",
     width: "95%",
     backgroundColor: "#2f2146",
+    fontFamily: 'Roboto-Regular',
   },
   cxLogin: {
     borderWidth: 1,
@@ -82,6 +87,7 @@ const mascara = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: 5,
     backgroundColor: "#2f2146",
+    fontFamily: 'Roboto-Regular',
   },
   cxInput: {
     paddingTop: 15,
