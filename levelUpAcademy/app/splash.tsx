@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Image, View } from 'react-native';
 import mascara from './css/style';
 
+
 export default function Splash() {
 
     const router = useRouter();

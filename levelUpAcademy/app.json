@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "scheme": "levelupacademy",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -13,9 +14,11 @@
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
+      "bundleIdentifier": "com.lucas.levelupacademy",
       "supportsTabletMode": true
     },
     "android": {
+      "package": "com.lucas.levelupacademy",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0c101c"
@@ -36,6 +39,12 @@
           ]
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2869cdd1-cb9c-4dd2-bba9-35322bba1b6d"
+      }
+    },
+    "owner": "macaraocomsharsixa"
   }
 }
