@@ -2,12 +2,14 @@ import { useRouter } from 'expo-router';
 import LottieView from "lottie-react-native";
 import { useEffect } from 'react';
 import { Image, View } from 'react-native';
+import { useAuth } from './context/AuthContext';
 import mascara from './css/style';
 
 
 export default function Splash() {
 
     const router = useRouter();
+    const { user } = useAuth();
 
     useEffect(() => {
         async function Prepare() {
@@ -16,12 +18,12 @@ export default function Splash() {
             } catch (e) {
                 alert(e);
             } finally {
-                router.replace('./(auth)/telaLogin');
+                router.replace(user ? './(tabs)/home' : './(auth)/telaLogin');
             }
         }
 
         Prepare();
-    }, []);
+    }, [router, user]);
 
     return (
         <View style={mascara.container}>

@@ -30,3 +30,7 @@ export interface Course {
   progress?: number;
   isCompleted?: boolean;
 }
+
+export default function TypeRoutePlaceholder() {
+  return null;
+}

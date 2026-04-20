@@ -17,7 +17,6 @@ export default function MenuInf() {
     useEffect(() => {
         const fixNavbar = async () => {
             await NavigationBar.setVisibilityAsync('hidden');
-            await NavigationBar.setPositionAsync('absolute');
         };
 
         fixNavbar();

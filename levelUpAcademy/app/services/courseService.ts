@@ -780,3 +780,7 @@ export async function seedCursoPDF(): Promise<void> {
     console.log("ℹ️ Curso da Fase 2 já existe no Firestore.");
   }
 }
+
+export default function CourseServiceRoutePlaceholder() {
+  return null;
+}

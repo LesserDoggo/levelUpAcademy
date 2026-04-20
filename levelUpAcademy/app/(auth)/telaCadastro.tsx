@@ -85,7 +85,7 @@ export default function TelaCadastro() {
 
     useEffect(() => {
         Animated.timing(fadeAnim, { toValue: 1, duration: 750, useNativeDriver: true }).start();
-    }, []);
+    }, [fadeAnim]);
 
     function limparErro(campo: string) {
         setErros((e) => ({ ...e, [campo]: '' }));

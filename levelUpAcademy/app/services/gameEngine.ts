@@ -46,6 +46,10 @@ export const GAME_CONFIG = {
   MOVEMENT_THRESHOLD: 3,
 };
 
+export default function GameEngineRoutePlaceholder() {
+  return null;
+}
+
 // ========== FUNÇÕES DE INICIALIZAÇÃO ==========
 
 export const initializeGameState = (

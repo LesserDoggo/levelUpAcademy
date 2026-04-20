@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1057924564707",
+    "project_id": "levelup-8f123",
+    "storage_bucket": "levelup-8f123.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1057924564707:android:936b3619f24becd1d767d6",
+        "android_client_info": {
+          "package_name": "com.lucas.levelupacademy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1057924564707-0m9pdoua86vr4hc5kic0fptua7jqqge1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lucas.levelupacademy",
+            "certificate_hash": "492bdee876a088d82b212fb2de8b3adec24a4d5b"
+          }
+        },
+        {
+          "client_id": "1057924564707-7iuconbv347v9e518u228pubg0nep6pb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAYIlHRP8yKz7L6hTjWQB1nbEtqHQrEffQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1057924564707-7iuconbv347v9e518u228pubg0nep6pb.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1057924564707-nhf5ij99euca0fjf95j08ajpubhirk95.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.lucas.levelupacademy"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

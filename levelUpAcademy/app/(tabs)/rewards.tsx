@@ -1,6 +1,5 @@
 import MenuInf from '@/components/Menu';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import conteudoStyle from '../css/conteudostyle';
@@ -120,7 +119,6 @@ const missoesMock: Missao[] = [
 export default function Missoes() {
     const { width } = useWindowDimensions();
     const isDesktop = width > 768;
-    const router = useRouter();
 
     const [missoes, setMissoes] = useState<Missao[]>(missoesMock);
     const [filtro, setFiltro] = useState<'todas' | 'ativas' | 'completas'>('todas');

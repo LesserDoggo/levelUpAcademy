@@ -3,7 +3,6 @@
 // =============================================================================
 
 import MenuInf from '@/components/Menu';
-import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
@@ -98,7 +97,6 @@ export default function Cursos() {
     const { width } = useWindowDimensions();
     const { user } = useAuth(); // Pegando o usuário logado
     const isDesktop = width > 768;
-    const router = useRouter();
 
     const [busca, setBusca] = useState('');
     const [filtroCategoria, setFiltroCategoria] = useState('Todos');

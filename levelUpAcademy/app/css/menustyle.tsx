@@ -31,3 +31,7 @@ export const menuStyle = (
     borderRightWidth: isDesktop ? 3 : 0,
     borderColor: '#3d295e',
 });
+
+export default function MenuStyleRoutePlaceholder() {
+    return null;
+}

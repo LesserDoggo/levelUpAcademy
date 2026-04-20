@@ -1,28 +1,25 @@
-// =============================================================================
-// LEVELUP ACADEMY — authService.ts
-// Serviço de autenticação usando Firebase Authentication
-// =============================================================================
-
+import { Platform } from "react-native";
 import {
-    createUserWithEmailAndPassword,
-    sendPasswordResetEmail,
-    signInWithEmailAndPassword,
-    signOut,
-    updateProfile,
-    User,
+  createUserWithEmailAndPassword,
+  getRedirectResult,
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  signInWithCredential,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  updateProfile,
+  User,
 } from "firebase/auth";
 import {
-    doc,
-    getDoc,
-    serverTimestamp,
-    setDoc,
-    updateDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { auth, db } from "../config/firebaseConfig";
-
-// --------------------------------------------------------------------------
-// TIPOS
-// --------------------------------------------------------------------------
 
 export interface UsuarioFirestore {
   uid: string;
@@ -35,7 +32,12 @@ export interface UsuarioFirestore {
   cursosCompletos: number;
   bio: string;
   fotoUrl: string | null;
-  criadoEm: unknown; // Firestore Timestamp
+  notificacoes?: {
+    canal: "email" | "push" | "sms";
+    frequencia: "diaria" | "semanal" | "mensal";
+    habilitado: boolean;
+  };
+  criadoEm: unknown;
   ultimoLogin: unknown;
 }
 
@@ -45,9 +47,89 @@ export interface ResultadoAuth {
   usuario?: User;
 }
 
-// --------------------------------------------------------------------------
-// CADASTRO
-// --------------------------------------------------------------------------
+function esperar(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function ehErroPermissaoFirestore(error: unknown) {
+  const code = (error as { code?: string })?.code ?? "";
+  const message = (error as { message?: string })?.message ?? "";
+
+  return (
+    code === "permission-denied" ||
+    message.includes("Missing or insufficient permissions")
+  );
+}
+
+async function executarComRetryFirestore<T>(operacao: () => Promise<T>) {
+  const tentativas = Platform.OS === "web" ? [0, 300, 800] : [0];
+
+  for (let i = 0; i < tentativas.length; i += 1) {
+    const delay = tentativas[i];
+
+    if (delay > 0) {
+      await esperar(delay);
+    }
+
+    try {
+      return await operacao();
+    } catch (error) {
+      const ultimaTentativa = i === tentativas.length - 1;
+
+      if (ultimaTentativa || !ehErroPermissaoFirestore(error)) {
+        throw error;
+      }
+    }
+  }
+
+  return await operacao();
+}
+
+function montarDadosIniciaisUsuario(
+  user: User,
+  nomeSobrescrito?: string,
+): UsuarioFirestore {
+  return {
+    uid: user.uid,
+    nome: nomeSobrescrito ?? user.displayName ?? "Usuario",
+    email: user.email ?? "",
+    nivel: 1,
+    xpTotal: 0,
+    moedas: 100,
+    diasOfensiva: 0,
+    cursosCompletos: 0,
+    bio: "",
+    fotoUrl: user.photoURL ?? null,
+    notificacoes: {
+      canal: "email",
+      frequencia: "semanal",
+      habilitado: true,
+    },
+    criadoEm: serverTimestamp(),
+    ultimoLogin: serverTimestamp(),
+  };
+}
+
+async function sincronizarUsuarioFirestore(user: User) {
+  const ref = doc(db, "usuarios", user.uid);
+  const snap = await executarComRetryFirestore(() => getDoc(ref));
+
+  if (!snap.exists()) {
+    await executarComRetryFirestore(() => setDoc(ref, montarDadosIniciaisUsuario(user)));
+    return;
+  }
+
+  const dadosAtuais = snap.data() as Partial<UsuarioFirestore>;
+
+  await executarComRetryFirestore(() =>
+    updateDoc(ref, {
+      nome: user.displayName ?? dadosAtuais.nome ?? "Usuario",
+      email: user.email ?? dadosAtuais.email ?? "",
+      fotoUrl: user.photoURL ?? dadosAtuais.fotoUrl ?? null,
+      ultimoLogin: serverTimestamp(),
+    }),
+  );
+}
 
 export async function cadastrarUsuario(
   nome: string,
@@ -55,30 +137,11 @@ export async function cadastrarUsuario(
   senha: string,
 ): Promise<ResultadoAuth> {
   try {
-    // 1. Cria o usuário no Firebase Authentication
     const credencial = await createUserWithEmailAndPassword(auth, email, senha);
     const user = credencial.user;
 
-    // 2. Atualiza o displayName no Auth
     await updateProfile(user, { displayName: nome });
-
-    // 3. Cria o documento do usuário no Firestore (coleção "usuarios")
-    const dadosIniciais: UsuarioFirestore = {
-      uid: user.uid,
-      nome,
-      email,
-      nivel: 1,
-      xpTotal: 0,
-      moedas: 100, // Bônus inicial
-      diasOfensiva: 0,
-      cursosCompletos: 0,
-      bio: "",
-      fotoUrl: null,
-      criadoEm: serverTimestamp(),
-      ultimoLogin: serverTimestamp(),
-    };
-
-    await setDoc(doc(db, "usuarios", user.uid), dadosIniciais);
+    await setDoc(doc(db, "usuarios", user.uid), montarDadosIniciaisUsuario(user, nome));
 
     return {
       sucesso: true,
@@ -86,14 +149,9 @@ export async function cadastrarUsuario(
       usuario: user,
     };
   } catch (error: unknown) {
-    const mensagem = traduzirErroFirebase(error);
-    return { sucesso: false, mensagem };
+    return { sucesso: false, mensagem: traduzirErroFirebase(error) };
   }
 }
-
-// --------------------------------------------------------------------------
-// LOGIN
-// --------------------------------------------------------------------------
 
 export async function logarUsuario(
   email: string,
@@ -103,7 +161,6 @@ export async function logarUsuario(
     const credencial = await signInWithEmailAndPassword(auth, email, senha);
     const user = credencial.user;
 
-    // Atualiza o campo ultimoLogin no Firestore
     await updateDoc(doc(db, "usuarios", user.uid), {
       ultimoLogin: serverTimestamp(),
     });
@@ -114,40 +171,116 @@ export async function logarUsuario(
       usuario: user,
     };
   } catch (error: unknown) {
-    const mensagem = traduzirErroFirebase(error);
-    return { sucesso: false, mensagem };
+    return { sucesso: false, mensagem: traduzirErroFirebase(error) };
   }
 }
 
-// --------------------------------------------------------------------------
-// LOGOUT
-// --------------------------------------------------------------------------
+export async function logarComGoogle(idToken?: string): Promise<ResultadoAuth> {
+  try {
+    let user: User;
+
+    if (idToken) {
+      const credential = GoogleAuthProvider.credential(idToken);
+      const resultado = await signInWithCredential(auth, credential);
+      user = resultado.user;
+    } else if (Platform.OS === "web") {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const resultado = await signInWithPopup(auth, provider);
+      user = resultado.user;
+    } else {
+      return {
+        sucesso: false,
+        mensagem: "Token do Google nao recebido no dispositivo.",
+      };
+    }
+
+    await sincronizarUsuarioFirestore(user);
+
+    return {
+      sucesso: true,
+      mensagem: "Login com Google realizado com sucesso!",
+      usuario: user,
+    };
+  } catch (error: unknown) {
+    return { sucesso: false, mensagem: traduzirErroFirebase(error) };
+  }
+}
+
+export async function iniciarLoginComGoogleWeb(): Promise<ResultadoAuth | null> {
+  if (Platform.OS !== "web") {
+    throw new Error("Fluxo de redirecionamento do Google disponivel apenas na web.");
+  }
+
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+
+  try {
+    const resultado = await signInWithPopup(auth, provider);
+    await sincronizarUsuarioFirestore(resultado.user);
+
+    return {
+      sucesso: true,
+      mensagem: "Login com Google realizado com sucesso!",
+      usuario: resultado.user,
+    };
+  } catch (error: unknown) {
+    const code = (error as { code?: string })?.code ?? "";
+
+    if (
+      code === "auth/popup-blocked" ||
+      code === "auth/cancelled-popup-request"
+    ) {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+export async function concluirLoginComGoogleWeb(): Promise<ResultadoAuth | null> {
+  if (Platform.OS !== "web") {
+    return null;
+  }
+
+  try {
+    const resultado = await getRedirectResult(auth);
+
+    if (!resultado?.user) {
+      return null;
+    }
+
+    await sincronizarUsuarioFirestore(resultado.user);
+
+    return {
+      sucesso: true,
+      mensagem: "Login com Google realizado com sucesso!",
+      usuario: resultado.user,
+    };
+  } catch (error: unknown) {
+    return {
+      sucesso: false,
+      mensagem: traduzirErroFirebase(error),
+    };
+  }
+}
 
 export async function deslogarUsuario(): Promise<void> {
   await signOut(auth);
 }
-
-// --------------------------------------------------------------------------
-// RECUPERAÇÃO DE SENHA
-// --------------------------------------------------------------------------
 
 export async function recuperarSenha(email: string): Promise<ResultadoAuth> {
   try {
     await sendPasswordResetEmail(auth, email);
     return {
       sucesso: true,
-      mensagem:
-        "E-mail de recuperação enviado. Verifique sua caixa de entrada.",
+      mensagem: "E-mail de recuperacao enviado. Verifique sua caixa de entrada.",
     };
   } catch (error: unknown) {
-    const mensagem = traduzirErroFirebase(error);
-    return { sucesso: false, mensagem };
+    return { sucesso: false, mensagem: traduzirErroFirebase(error) };
   }
 }
-
-// --------------------------------------------------------------------------
-// BUSCAR DADOS DO USUÁRIO NO FIRESTORE
-// --------------------------------------------------------------------------
 
 export async function buscarDadosUsuario(
   uid: string,
@@ -163,32 +296,33 @@ export async function buscarDadosUsuario(
   }
 }
 
-// --------------------------------------------------------------------------
-// USUÁRIO ATUAL (helper)
-// --------------------------------------------------------------------------
-
 export function getUsuarioAtual(): User | null {
   return auth.currentUser;
 }
 
-// --------------------------------------------------------------------------
-// TRADUÇÃO DE ERROS DO FIREBASE (PT-BR)
-// --------------------------------------------------------------------------
-
 function traduzirErroFirebase(error: unknown): string {
-  // Firebase lança objetos com a propriedade 'code'
   const code = (error as { code?: string })?.code ?? "";
 
   const erros: Record<string, string> = {
-    "auth/email-already-in-use": "Este e-mail já está cadastrado.",
-    "auth/invalid-email": "E-mail inválido.",
+    "auth/email-already-in-use": "Este e-mail ja esta cadastrado.",
+    "auth/invalid-email": "E-mail invalido.",
     "auth/weak-password": "A senha deve ter pelo menos 6 caracteres.",
     "auth/user-not-found": "Nenhuma conta encontrada com este e-mail.",
     "auth/wrong-password": "Senha incorreta.",
     "auth/too-many-requests": "Muitas tentativas. Tente novamente mais tarde.",
-    "auth/network-request-failed": "Sem conexão com a internet.",
+    "auth/network-request-failed": "Sem conexao com a internet.",
     "auth/invalid-credential": "E-mail ou senha incorretos.",
+    "auth/operation-not-allowed":
+      "Login com Google nao habilitado no Firebase Authentication.",
+    "auth/popup-closed-by-user": "Login cancelado pelo usuario.",
+    "auth/popup-blocked": "O navegador bloqueou o popup de login do Google.",
+    "auth/unauthorized-domain":
+      "Este dominio ainda nao foi autorizado no Firebase Authentication.",
   };
 
   return erros[code] ?? "Ocorreu um erro inesperado. Tente novamente.";
+}
+
+export default function AuthServiceRoutePlaceholder() {
+  return null;
 }

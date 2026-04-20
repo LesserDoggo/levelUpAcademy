@@ -14,7 +14,6 @@ export default function TabLayout() {
     // SÓ EXECUTA SE FOR ANDROID
     if (Platform.OS === 'android') {
       try {
-        await NavigationBar.setBehaviorAsync('overlay-swipe');
         await NavigationBar.setVisibilityAsync('hidden');
 
         RNStatusBar.setHidden(true, 'none');

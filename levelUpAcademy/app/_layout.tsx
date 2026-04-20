@@ -6,7 +6,6 @@
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import * as NavigationBar from 'expo-navigation-bar';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -35,7 +34,7 @@ function AuthGuard() {
     } else if (user && emRotaAuth) {
       router.replace('/(tabs)/home');
     }
-  }, [user, carregando, segments]);
+  }, [user, carregando, segments, router]);
 
   return null;
 }
@@ -53,10 +52,6 @@ function RootLayoutNav() {
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync('transparent');
-    NavigationBar.setVisibilityAsync('hidden');
-    NavigationBar.setBehaviorAsync('overlay-swipe');
-    NavigationBar.setBackgroundColorAsync('transparent');
-    NavigationBar.setPositionAsync('absolute');
   }, []);
 
   useEffect(() => {

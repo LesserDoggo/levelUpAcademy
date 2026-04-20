@@ -20,18 +20,22 @@ import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Image,
     Platform,
     Pressable,
     ScrollView,
+    Switch,
     Text,
     TextInput,
     useWindowDimensions,
     View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import conteudoStyle from '../css/conteudostyle';
 import mascara from '../css/style';
 
-import { db } from '../config/firebaseConfig';
+import { db, storage } from '../config/firebaseConfig';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
 import { buscarDadosUsuario, deslogarUsuario, UsuarioFirestore } from '../services/authService';
 
@@ -48,16 +52,29 @@ export default function Perfil() {
     const [editando, setEditando] = useState(false);
     const [nomeEdit, setNomeEdit] = useState(dadosCtx?.nome ?? '');
     const [bioEdit, setBioEdit] = useState(dadosCtx?.bio ?? '');
+    const [canalNotificacao, setCanalNotificacao] = useState<'email' | 'push' | 'sms'>('email');
+    const [frequenciaNotificacao, setFrequenciaNotificacao] = useState<'diaria' | 'semanal' | 'mensal'>('semanal');
+    const [notificacaoAtiva, setNotificacaoAtiva] = useState(true);
 
     useEffect(() => {
         if (dadosCtx) {
             setUsuario(dadosCtx);
             setNomeEdit(dadosCtx.nome);
             setBioEdit(dadosCtx.bio);
+            setCanalNotificacao(dadosCtx.notificacoes?.canal ?? 'email');
+            setFrequenciaNotificacao(dadosCtx.notificacoes?.frequencia ?? 'semanal');
+            setNotificacaoAtiva(dadosCtx.notificacoes?.habilitado ?? true);
             setCarregando(false);
         } else if (user) {
             buscarDadosUsuario(user.uid).then((d) => {
-                if (d) { setUsuario(d); setNomeEdit(d.nome); setBioEdit(d.bio); }
+                if (d) {
+                    setUsuario(d);
+                    setNomeEdit(d.nome);
+                    setBioEdit(d.bio);
+                    setCanalNotificacao(d.notificacoes?.canal ?? 'email');
+                    setFrequenciaNotificacao(d.notificacoes?.frequencia ?? 'semanal');
+                    setNotificacaoAtiva(d.notificacoes?.habilitado ?? true);
+                }
                 setCarregando(false);
             });
         }
@@ -71,9 +88,23 @@ export default function Perfil() {
             await updateDoc(doc(db, 'usuarios', user.uid), {
                 nome: nomeEdit.trim(),
                 bio: bioEdit.trim(),
+                notificacoes: {
+                    canal: canalNotificacao,
+                    frequencia: frequenciaNotificacao,
+                    habilitado: notificacaoAtiva,
+                },
                 atualizadoEm: serverTimestamp(),
             });
-            setUsuario({ ...usuario, nome: nomeEdit.trim(), bio: bioEdit.trim() });
+            setUsuario({
+                ...usuario,
+                nome: nomeEdit.trim(),
+                bio: bioEdit.trim(),
+                notificacoes: {
+                    canal: canalNotificacao,
+                    frequencia: frequenciaNotificacao,
+                    habilitado: notificacaoAtiva,
+                },
+            });
             await recarregarDados();
             setEditando(false);
             Alert.alert('✅ Perfil atualizado com sucesso!');
@@ -81,6 +112,55 @@ export default function Perfil() {
             Alert.alert('Erro', 'Não foi possível salvar. Verifique sua conexão.');
         }
         setSalvando(false);
+    }
+
+    async function handleUploadFoto() {
+        if (!user) return;
+        try {
+            if (Platform.OS !== 'web') {
+                const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (!permissao.granted) {
+                    Alert.alert('Permissão necessária', 'Autorize acesso à galeria para enviar uma foto.');
+                    return;
+                }
+            }
+
+            const resultado = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.7,
+            });
+            if (resultado.canceled || !resultado.assets[0]?.uri) return;
+            const asset = resultado.assets[0];
+
+            setSalvando(true);
+            let arquivoParaUpload: Blob;
+
+            if (Platform.OS === 'web' && asset.file) {
+                arquivoParaUpload = asset.file as unknown as Blob;
+            } else {
+                const response = await fetch(asset.uri);
+                arquivoParaUpload = await response.blob();
+            }
+
+            const fotoRef = ref(storage, `fotosPerfil/${user.uid}.jpg`);
+            await uploadBytes(fotoRef, arquivoParaUpload, {
+                contentType: asset.mimeType ?? 'image/jpeg',
+            });
+            const fotoUrl = await getDownloadURL(fotoRef);
+            await updateDoc(doc(db, 'usuarios', user.uid), { fotoUrl, atualizadoEm: serverTimestamp() });
+
+            setUsuario((atual) => (atual ? { ...atual, fotoUrl } : atual));
+            await recarregarDados();
+            Alert.alert('Sucesso', 'Foto de perfil atualizada.');
+        } catch (erro: any) {
+            const mensagem = erro?.message?.includes('permission')
+                ? 'Sem permissão para upload. Verifique as regras do Firebase Storage.'
+                : 'Não foi possível enviar a foto de perfil.';
+            Alert.alert('Erro', mensagem);
+        } finally {
+            setSalvando(false);
+        }
     }
 
     function handleCancelar() {
@@ -204,12 +284,16 @@ export default function Perfil() {
 
     async function executarTrocaSenha(atual: string, nova: string) {
         if (!user?.email) return;
+        if (nova.length < 6 || !/[A-Z]/.test(nova) || !/[0-9]/.test(nova)) {
+            Alert.alert('Senha inválida', 'A nova senha deve ter 6+ caracteres, 1 maiúscula e 1 número.');
+            return;
+        }
         try {
             const cred = EmailAuthProvider.credential(user.email, atual);
             await reauthenticateWithCredential(user, cred);
             await updatePassword(user, nova);
             Alert.alert('Sucesso', 'Senha alterada com sucesso!');
-        } catch (e: any) {
+        } catch {
             Alert.alert('Erro', 'Não foi possível alterar a senha. Verifique a senha atual.');
         }
     }
@@ -237,9 +321,13 @@ export default function Perfil() {
 
                 <View style={conteudoStyle.cardPerfil}>
                     <View style={conteudoStyle.avatarContainer}>
-                        <View style={conteudoStyle.avatar}>
-                            <MaterialCommunityIcons name="account-circle" size={60} color="#60519b" />
-                        </View>
+                        <Pressable style={conteudoStyle.avatar} onPress={handleUploadFoto}>
+                            {usuario.fotoUrl
+                                ? <Image source={{ uri: usuario.fotoUrl }} style={{ width: 70, height: 70, borderRadius: 35 }} />
+                                : <MaterialCommunityIcons name="account-circle" size={60} color="#60519b" />
+                            }
+                        </Pressable>
+                        <Text style={{ color: '#bfc0d1', fontSize: 12, marginTop: 6 }}>Toque para alterar foto</Text>
                     </View>
 
                     {!editando ? (
@@ -307,27 +395,61 @@ export default function Perfil() {
                 </View>
 
                 <View style={{ padding: 16, gap: 10 }}>
+                    <View style={[conteudoStyle.botaoAcao, { justifyContent: 'space-between' }]}>
+                        <Text style={conteudoStyle.textoBotaoAcao}>Notificações ativas</Text>
+                        <Switch value={notificacaoAtiva} onValueChange={setNotificacaoAtiva} />
+                    </View>
+                    <View style={[conteudoStyle.botaoAcao, { flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}>
+                        <Text style={conteudoStyle.textoBotaoAcao}>Canal de notificação</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {(['email', 'push', 'sms'] as const).map((canal) => (
+                                <Pressable key={canal} onPress={() => setCanalNotificacao(canal)} style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: canalNotificacao === canal ? '#a855f7' : '#3a3a5c' }]}>
+                                    <Text style={conteudoStyle.textoBotaoEditar}>{canal.toUpperCase()}</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    </View>
+                    <View style={[conteudoStyle.botaoAcao, { flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}>
+                        <Text style={conteudoStyle.textoBotaoAcao}>Frequência</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {(['diaria', 'semanal', 'mensal'] as const).map((f) => (
+                                <Pressable key={f} onPress={() => setFrequenciaNotificacao(f)} style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: frequenciaNotificacao === f ? '#a855f7' : '#3a3a5c' }]}>
+                                    <Text style={conteudoStyle.textoBotaoEditar}>{f}</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    </View>
                     <Pressable style={conteudoStyle.botaoAcao} onPress={handleAlterarSenha}>
                         <MaterialCommunityIcons name="lock-reset" size={20} color="#a855f7" />
                         <Text style={conteudoStyle.textoBotaoAcao}>Alterar Senha</Text>
                     </Pressable>
+                    <Text style={{ color: '#888', fontSize: 11, marginTop: -6 }}>
+                        Regras de senha: 6+ caracteres, 1 maiúscula e 1 número.
+                    </Text>
 
-                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => Alert.alert('Política de Privacidade', 'Adequado à LGPD — Lei 13.709/2018.')}>
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/politica-privacidade')}>
                         <MaterialCommunityIcons name="shield-account" size={20} color="#a855f7" />
                         <Text style={conteudoStyle.textoBotaoAcao}>Política de Privacidade (LGPD)</Text>
                     </Pressable>
 
-                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => Alert.alert('Termos de Uso', 'Funcionalidade em desenvolvimento.')}>
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/termos-uso')}>
                         <MaterialCommunityIcons name="file-document-outline" size={20} color="#a855f7" />
                         <Text style={conteudoStyle.textoBotaoAcao}>Termos de Uso</Text>
                     </Pressable>
 
-                    <Pressable
-                        style={conteudoStyle.botaoAcao}
-                        onPress={() => Alert.alert('Sobre o LevelUp Academy', 'Versão: 1.0.0\nDesenvolvedor: Equipe Startup ADS 2026.1\nPlataforma: React Native + Expo')}
-                    >
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/fale-conosco')}>
+                        <MaterialCommunityIcons name="message-text-outline" size={20} color="#a855f7" />
+                        <Text style={conteudoStyle.textoBotaoAcao}>Fale Conosco</Text>
+                    </Pressable>
+
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/sobre')}>
                         <MaterialCommunityIcons name="information-outline" size={20} color="#a855f7" />
                         <Text style={conteudoStyle.textoBotaoAcao}>Sobre o Aplicativo</Text>
+                    </Pressable>
+
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/avaliacao')}>
+                        <MaterialCommunityIcons name="star-outline" size={20} color="#a855f7" />
+                        <Text style={conteudoStyle.textoBotaoAcao}>Avaliar o App</Text>
                     </Pressable>
 
                     <Pressable style={[conteudoStyle.botaoAcao, { borderColor: '#ff6b35' }]} onPress={handleLogout}>

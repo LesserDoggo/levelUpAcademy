@@ -8,12 +8,16 @@
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebaseConfig';
-import { buscarDadosUsuario, UsuarioFirestore } from '../services/authService';
+import { buscarDadosUsuario, deslogarUsuario, logarComGoogle, logarUsuario, UsuarioFirestore } from '../services/authService';
 
 interface AuthContextType {
     user: User | null;
     dadosUsuario: UsuarioFirestore | null;
     carregando: boolean;
+    login: (email: string, senha: string) => Promise<{ sucesso: boolean; mensagem: string }>;
+    loginComGoogle: (idToken?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
+    logout: () => Promise<void>;
+    restoreSession: () => Promise<void>;
     recarregarDados: () => Promise<void>;
 }
 
@@ -21,6 +25,10 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     dadosUsuario: null,
     carregando: true,
+    login: async () => ({ sucesso: false, mensagem: 'AuthContext não inicializado' }),
+    loginComGoogle: async () => ({ sucesso: false, mensagem: 'AuthContext não inicializado' }),
+    logout: async () => { },
+    restoreSession: async () => { },
     recarregarDados: async () => { },
 });
 
@@ -67,6 +75,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    async function restoreSession() {
+        if (auth.currentUser) {
+            const dados = await buscarComRetry(auth.currentUser.uid);
+            setDadosUsuario(dados);
+            setUser(auth.currentUser);
+        }
+    }
+
+    async function login(email: string, senha: string) {
+        const resultado = await logarUsuario(email, senha);
+        return { sucesso: resultado.sucesso, mensagem: resultado.mensagem };
+    }
+
+    async function loginComGoogle(idToken?: string) {
+        const resultado = await logarComGoogle(idToken);
+        return { sucesso: resultado.sucesso, mensagem: resultado.mensagem };
+    }
+
+    async function logout() {
+        await deslogarUsuario();
+        setDadosUsuario(null);
+        setUser(null);
+    }
+
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
@@ -96,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, dadosUsuario, carregando, recarregarDados }}>
+        <AuthContext.Provider value={{ user, dadosUsuario, carregando, login, loginComGoogle, logout, restoreSession, recarregarDados }}>
             {children}
         </AuthContext.Provider>
     );
@@ -104,4 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
     return useContext(AuthContext);
+}
+
+export default function AuthContextRoutePlaceholder() {
+    return null;
 }
