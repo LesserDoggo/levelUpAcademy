@@ -39,6 +39,39 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
 import { buscarDadosUsuario, deslogarUsuario, UsuarioFirestore } from '../services/authService';
 
+const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+const CLOUDINARY_FOLDER = process.env.EXPO_PUBLIC_CLOUDINARY_FOLDER ?? 'fotosPerfil';
+
+function cloudinaryConfigurado() {
+    return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET);
+}
+
+async function uploadFotoParaCloudinary(file: Blob, userUid: string): Promise<string> {
+    if (!cloudinaryConfigurado()) {
+        throw new Error('cloudinary_not_configured');
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET as string);
+    formData.append('folder', CLOUDINARY_FOLDER);
+    formData.append('public_id', userUid);
+
+    const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+        { method: 'POST', body: formData }
+    );
+
+    const data = await response.json();
+    if (!response.ok || !data?.secure_url) {
+        const msg = data?.error?.message ?? 'Falha no upload para Cloudinary';
+        throw new Error(msg);
+    }
+
+    return data.secure_url as string;
+}
+
 export default function Perfil() {
     const { width } = useWindowDimensions();
     const isDesktop = width > 768;
@@ -143,20 +176,28 @@ export default function Perfil() {
                 arquivoParaUpload = await response.blob();
             }
 
-            const fotoRef = ref(storage, `fotosPerfil/${user.uid}.jpg`);
-            await uploadBytes(fotoRef, arquivoParaUpload, {
-                contentType: asset.mimeType ?? 'image/jpeg',
-            });
-            const fotoUrl = await getDownloadURL(fotoRef);
+            let fotoUrl: string;
+            if (cloudinaryConfigurado()) {
+                fotoUrl = await uploadFotoParaCloudinary(arquivoParaUpload, user.uid);
+            } else {
+                const fotoRef = ref(storage, `fotosPerfil/${user.uid}.jpg`);
+                await uploadBytes(fotoRef, arquivoParaUpload, {
+                    contentType: asset.mimeType ?? 'image/jpeg',
+                });
+                fotoUrl = await getDownloadURL(fotoRef);
+            }
+
             await updateDoc(doc(db, 'usuarios', user.uid), { fotoUrl, atualizadoEm: serverTimestamp() });
 
             setUsuario((atual) => (atual ? { ...atual, fotoUrl } : atual));
             await recarregarDados();
             Alert.alert('Sucesso', 'Foto de perfil atualizada.');
         } catch (erro: any) {
-            const mensagem = erro?.message?.includes('permission')
-                ? 'Sem permissão para upload. Verifique as regras do Firebase Storage.'
-                : 'Não foi possível enviar a foto de perfil.';
+            const mensagem = erro?.message?.includes('cloudinary_not_configured')
+                ? 'Cloudinary não configurado. Preencha EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME e EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.'
+                : erro?.message?.includes('permission')
+                    ? 'Sem permissão para upload. Verifique as regras do Firebase Storage.'
+                    : 'Não foi possível enviar a foto de perfil.';
             Alert.alert('Erro', mensagem);
         } finally {
             setSalvando(false);
