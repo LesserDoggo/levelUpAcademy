@@ -1,10 +1,3 @@
-// =============================================================================
-// LEVELUP ACADEMY — app/(auth)/telaCadastro.tsx
-// CORREÇÃO #1: CampoInput extraído FORA do componente principal.
-// Componentes definidos dentro do render são recriados a cada keystroke,
-// causando perda de foco e dispensando o teclado.
-// =============================================================================
-
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -22,13 +15,13 @@ import mascara from '../css/style';
 import { cadastrarUsuario } from '../services/authService';
 
 function validarForcaSenha(senha: string): string | null {
-    if (senha.length < 6) return 'Mínimo de 6 caracteres.';
-    if (!/[A-Z]/.test(senha)) return 'Inclua ao menos uma letra maiúscula.';
-    if (!/[0-9]/.test(senha)) return 'Inclua ao menos um número.';
+    if (senha.length < 6) return 'Minimo de 6 caracteres.';
+    if (!/[A-Z]/.test(senha)) return 'Inclua ao menos uma letra maiuscula.';
+    if (!/[0-9]/.test(senha)) return 'Inclua ao menos um numero.';
+    if (!/[!@#$%^&*(),.?":{}|<>_\-\\/\[\];'+=~`]/.test(senha)) return 'Inclua ao menos um caractere especial.';
     return null;
 }
 
-// ── CampoInput definido FORA do TelaCadastro ────────────────────────────────
 interface CampoProps {
     value: string;
     onChange: (t: string) => void;
@@ -70,7 +63,6 @@ function CampoInput({
     );
 }
 
-// ── Componente principal ─────────────────────────────────────────────────────
 export default function TelaCadastro() {
     const router = useRouter();
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -95,10 +87,10 @@ export default function TelaCadastro() {
         const novos: Record<string, string> = {};
         if (!nome.trim()) novos.nome = 'Informe seu nome.';
         if (!email.trim()) novos.email = 'Informe o e-mail.';
-        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) novos.email = 'E-mail inválido.';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) novos.email = 'E-mail invalido.';
         const erroSenha = validarForcaSenha(senha);
         if (erroSenha) novos.senha = erroSenha;
-        if (senha !== confirmar) novos.confirmar = 'As senhas não coincidem.';
+        if (senha !== confirmar) novos.confirmar = 'As senhas nao coincidem.';
         if (!aceitouTermos) novos.termos = 'Aceite os Termos de Uso para continuar.';
         setErros(novos);
         return Object.keys(novos).length === 0;
@@ -109,9 +101,10 @@ export default function TelaCadastro() {
         setCarregando(true);
         const resultado = await cadastrarUsuario(nome.trim(), email.trim(), senha);
         setCarregando(false);
+
         if (resultado.sucesso) {
-            Alert.alert('🎉 Conta criada!', 'Bem-vindo ao LevelUp Academy!', [
-                { text: 'Começar', onPress: () => router.replace('/(tabs)/home') },
+            Alert.alert('Conta criada!', 'Bem-vindo ao LevelUp Academy!', [
+                { text: 'Comecar', onPress: () => router.replace('/(tabs)/home') },
             ]);
         } else {
             Alert.alert('Erro ao cadastrar', resultado.mensagem);
@@ -123,7 +116,6 @@ export default function TelaCadastro() {
             <Image source={require('../../assets/images/background_placeholder.png')} style={mascara.imgFundo} />
 
             <Animated.View style={[mascara.cxLogin, { opacity: fadeAnim }]}>
-                {/* keyboardShouldPersistTaps evita que toque fora do input dispense o teclado */}
                 <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                     <View style={mascara.cxTituloLogin}>
                         <Text style={mascara.paragraph}>Criar Conta</Text>
@@ -162,17 +154,16 @@ export default function TelaCadastro() {
                             autoCapitalize="none"
                         />
 
-                        {/* Política de senha */}
                         <View style={{ backgroundColor: '#1a1a2e', borderRadius: 8, padding: 10, marginBottom: 12, width: '80%', alignSelf: 'center' }}>
                             <Text style={{ color: '#bfc0d1', fontSize: 11, lineHeight: 18 }}>
-                                🔐 Política de senha:{'\n'}
-                                {'  '}• Mínimo de 6 caracteres{'\n'}
-                                {'  '}• Ao menos 1 letra maiúscula{'\n'}
-                                {'  '}• Ao menos 1 número
+                                {'Politica de senha:'}{'\n'}
+                                {'  '}• Minimo de 6 caracteres{'\n'}
+                                {'  '}• Ao menos 1 letra maiuscula{'\n'}
+                                {'  '}• Ao menos 1 numero{'\n'}
+                                {'  '}• Ao menos 1 caractere especial
                             </Text>
                         </View>
 
-                        {/* Aceite LGPD */}
                         <Pressable
                             style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, width: '80%', alignSelf: 'center' }}
                             onPress={() => { setAceitouTermos(!aceitouTermos); limparErro('termos'); }}
@@ -187,7 +178,7 @@ export default function TelaCadastro() {
                             </View>
                             <Text style={{ color: '#bfc0d1', fontSize: 12, flex: 1 }}>
                                 Li e aceito os <Text style={{ color: '#a855f7' }}>Termos de Uso</Text> e a{' '}
-                                <Text style={{ color: '#a855f7' }}>Política de Privacidade</Text> (LGPD).
+                                <Text style={{ color: '#a855f7' }}>Politica de Privacidade</Text> (LGPD).
                             </Text>
                         </Pressable>
                         {erros.termos ? (
@@ -206,7 +197,7 @@ export default function TelaCadastro() {
 
                         <Pressable onPress={() => router.back()}>
                             <Text style={{ color: '#bfc0d1', textAlign: 'center', marginTop: 16, fontSize: 13 }}>
-                                Já tem uma conta?{' '}
+                                Ja tem uma conta?{' '}
                                 <Text style={{ color: '#a855f7', fontWeight: 'bold' }}>Entrar</Text>
                             </Text>
                         </Pressable>

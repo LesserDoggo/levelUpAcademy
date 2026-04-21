@@ -33,7 +33,7 @@ export interface UsuarioFirestore {
   bio: string;
   fotoUrl: string | null;
   notificacoes?: {
-    canal: "email" | "push" | "sms";
+    canal: "email" | "push";
     frequencia: "diaria" | "semanal" | "mensal";
     habilitado: boolean;
   };
@@ -45,6 +45,16 @@ export interface ResultadoAuth {
   sucesso: boolean;
   mensagem: string;
   usuario?: User;
+}
+
+function validarSenhaForte(senha: string): string | null {
+  if (senha.length < 6) return "A senha deve ter pelo menos 6 caracteres.";
+  if (!/[A-Z]/.test(senha)) return "A senha deve ter ao menos 1 letra maiuscula.";
+  if (!/[0-9]/.test(senha)) return "A senha deve ter ao menos 1 numero.";
+  if (!/[!@#$%^&*(),.?\":{}|<>_\-\\/\[\];'+=~`]/.test(senha)) {
+    return "A senha deve ter ao menos 1 caractere especial.";
+  }
+  return null;
 }
 
 function esperar(ms: number) {
@@ -137,11 +147,21 @@ export async function cadastrarUsuario(
   senha: string,
 ): Promise<ResultadoAuth> {
   try {
+    const erroSenha = validarSenhaForte(senha);
+    if (erroSenha) {
+      return {
+        sucesso: false,
+        mensagem: erroSenha,
+      };
+    }
+
     const credencial = await createUserWithEmailAndPassword(auth, email, senha);
     const user = credencial.user;
 
     await updateProfile(user, { displayName: nome });
-    await setDoc(doc(db, "usuarios", user.uid), montarDadosIniciaisUsuario(user, nome));
+    await executarComRetryFirestore(() =>
+      setDoc(doc(db, "usuarios", user.uid), montarDadosIniciaisUsuario(user, nome)),
+    );
 
     return {
       sucesso: true,
@@ -306,7 +326,9 @@ function traduzirErroFirebase(error: unknown): string {
   const erros: Record<string, string> = {
     "auth/email-already-in-use": "Este e-mail ja esta cadastrado.",
     "auth/invalid-email": "E-mail invalido.",
-    "auth/weak-password": "A senha deve ter pelo menos 6 caracteres.",
+    "auth/weak-password": "A senha deve ter 6+ caracteres, 1 letra maiuscula, 1 numero e 1 caractere especial.",
+    "auth/password-does-not-meet-requirements":
+      "A senha deve ter 6+ caracteres, 1 letra maiuscula, 1 numero e 1 caractere especial.",
     "auth/user-not-found": "Nenhuma conta encontrada com este e-mail.",
     "auth/wrong-password": "Senha incorreta.",
     "auth/too-many-requests": "Muitas tentativas. Tente novamente mais tarde.",

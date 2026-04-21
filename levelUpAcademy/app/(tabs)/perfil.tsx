@@ -52,7 +52,7 @@ export default function Perfil() {
     const [editando, setEditando] = useState(false);
     const [nomeEdit, setNomeEdit] = useState(dadosCtx?.nome ?? '');
     const [bioEdit, setBioEdit] = useState(dadosCtx?.bio ?? '');
-    const [canalNotificacao, setCanalNotificacao] = useState<'email' | 'push' | 'sms'>('email');
+    const [canalNotificacao, setCanalNotificacao] = useState<'email' | 'push'>('email');
     const [frequenciaNotificacao, setFrequenciaNotificacao] = useState<'diaria' | 'semanal' | 'mensal'>('semanal');
     const [notificacaoAtiva, setNotificacaoAtiva] = useState(true);
 
@@ -245,6 +245,10 @@ export default function Perfil() {
 
     // ── Alterar senha ───────────────────────────────────────────────────────
     function handleAlterarSenha() {
+        if (user?.providerData?.some((provider) => provider.providerId === 'google.com')) {
+            Alert.alert('Login com Google', 'Essa conta usa a senha da sua conta Google. Para trocar a senha, altere-a diretamente no Google.');
+            return;
+        }
         if (Platform.OS === 'web') {
             const senhaAtual = window.prompt("Digite sua senha atual:");
             if (!senhaAtual) return;
@@ -284,7 +288,7 @@ export default function Perfil() {
 
     async function executarTrocaSenha(atual: string, nova: string) {
         if (!user?.email) return;
-        if (nova.length < 6 || !/[A-Z]/.test(nova) || !/[0-9]/.test(nova)) {
+        if (nova.length < 6 || !/[A-Z]/.test(nova) || !/[0-9]/.test(nova) || !/[!@#$%^&*(),.?":{}|<>_\-\\/\[\];'+=~`]/.test(nova)) {
             Alert.alert('Senha inválida', 'A nova senha deve ter 6+ caracteres, 1 maiúscula e 1 número.');
             return;
         }
@@ -317,10 +321,14 @@ export default function Perfil() {
         ]}>
             <MenuInf />
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 12, paddingTop: isDesktop ? 18 : 0 }}
+            >
+                <View style={{ width: '100%', maxWidth: 980, alignSelf: 'center' }}>
 
-                <View style={conteudoStyle.cardPerfil}>
-                    <View style={conteudoStyle.avatarContainer}>
+                <View style={[conteudoStyle.cardPerfil, isDesktop && { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]}>
+                    <View style={[conteudoStyle.avatarContainer, isDesktop && { marginBottom: 0, marginRight: 28, alignItems: 'center' }]}>
                         <Pressable style={conteudoStyle.avatar} onPress={handleUploadFoto}>
                             {usuario.fotoUrl
                                 ? <Image source={{ uri: usuario.fotoUrl }} style={{ width: 70, height: 70, borderRadius: 35 }} />
@@ -331,19 +339,19 @@ export default function Perfil() {
                     </View>
 
                     {!editando ? (
-                        <View style={conteudoStyle.secaoInfo}>
-                            <Text style={conteudoStyle.nomeUsuario}>{usuario.nome}</Text>
-                            <Text style={conteudoStyle.emailUsuario}>{usuario.email}</Text>
+                        <View style={[conteudoStyle.secaoInfo, isDesktop && { alignItems: 'flex-start', flex: 1 }]}>
+                            <Text style={[conteudoStyle.nomeUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuario.nome}</Text>
+                            <Text style={[conteudoStyle.emailUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuario.email}</Text>
                             {usuario.bio
-                                ? <Text style={conteudoStyle.bioUsuario}>{usuario.bio}</Text>
-                                : <Text style={{ color: '#666', fontSize: 12, fontStyle: 'italic' }}>Sem bio cadastrada.</Text>
+                                ? <Text style={[conteudoStyle.bioUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuario.bio}</Text>
+                                : <Text style={[{ color: '#666', fontSize: 12, fontStyle: 'italic' }, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>Sem bio cadastrada.</Text>
                             }
-                            <Pressable style={[conteudoStyle.botaoEditar, { marginTop: 12 }]} onPress={() => setEditando(true)}>
+                            <Pressable style={[conteudoStyle.botaoEditar, { marginTop: 12 }, isDesktop && { alignSelf: 'flex-start' }]} onPress={() => setEditando(true)}>
                                 <Text style={conteudoStyle.textoBotaoEditar}>✏️ Editar Perfil</Text>
                             </Pressable>
                         </View>
                     ) : (
-                        <View style={conteudoStyle.secaoInfo}>
+                        <View style={[conteudoStyle.secaoInfo, isDesktop && { alignItems: 'flex-start', flex: 1 }]}>
                             <TextInput
                                 value={nomeEdit}
                                 onChangeText={setNomeEdit}
@@ -359,12 +367,12 @@ export default function Perfil() {
                                 placeholderTextColor="#bfc0d1"
                                 multiline
                             />
-                            <View style={{ backgroundColor: '#1a1a2e', borderRadius: 8, padding: 8, marginBottom: 8, width: '80%' }}>
+                            <View style={{ backgroundColor: '#1a1a2e', borderRadius: 8, padding: 8, marginBottom: 8, width: isDesktop ? '100%' : '80%' }}>
                                 <Text style={{ color: '#888', fontSize: 11 }}>
                                     🔒 E-mail e dados críticos não podem ser alterados por aqui.
                                 </Text>
                             </View>
-                            <View style={{ flexDirection: 'row', gap: 8, width: '80%' }}>
+                            <View style={{ flexDirection: 'row', gap: 8, width: isDesktop ? '100%' : '80%' }}>
                                 <Pressable style={[conteudoStyle.botaoEditar, { flex: 1 }]} onPress={handleSalvar} disabled={salvando}>
                                     {salvando
                                         ? <ActivityIndicator color="#fff" size="small" />
@@ -402,19 +410,19 @@ export default function Perfil() {
                     <View style={[conteudoStyle.botaoAcao, { flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}>
                         <Text style={conteudoStyle.textoBotaoAcao}>Canal de notificação</Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
-                            {(['email', 'push', 'sms'] as const).map((canal) => (
+                            {(['email', 'push'] as const).map((canal) => (
                                 <Pressable key={canal} onPress={() => setCanalNotificacao(canal)} style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: canalNotificacao === canal ? '#a855f7' : '#3a3a5c' }]}>
-                                    <Text style={conteudoStyle.textoBotaoEditar}>{canal.toUpperCase()}</Text>
+                                    <Text style={conteudoStyle.textoBotaoEditar}>{canal === 'email' ? 'E-mail' : 'Push'}</Text>
                                 </Pressable>
                             ))}
                         </View>
                     </View>
                     <View style={[conteudoStyle.botaoAcao, { flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}>
-                        <Text style={conteudoStyle.textoBotaoAcao}>Frequência</Text>
+                        <Text style={conteudoStyle.textoBotaoAcao}>Frequencia de notificacoes</Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                             {(['diaria', 'semanal', 'mensal'] as const).map((f) => (
                                 <Pressable key={f} onPress={() => setFrequenciaNotificacao(f)} style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: frequenciaNotificacao === f ? '#a855f7' : '#3a3a5c' }]}>
-                                    <Text style={conteudoStyle.textoBotaoEditar}>{f}</Text>
+                                    <Text style={conteudoStyle.textoBotaoEditar}>{f === 'diaria' ? 'Diaria' : f === 'semanal' ? 'Semanal' : 'Mensal'}</Text>
                                 </Pressable>
                             ))}
                         </View>
@@ -424,7 +432,7 @@ export default function Perfil() {
                         <Text style={conteudoStyle.textoBotaoAcao}>Alterar Senha</Text>
                     </Pressable>
                     <Text style={{ color: '#888', fontSize: 11, marginTop: -6 }}>
-                        Regras de senha: 6+ caracteres, 1 maiúscula e 1 número.
+                        {user?.providerData?.some((provider) => provider.providerId === 'google.com') ? 'Login com Google: a senha e gerenciada na sua conta Google.' : 'Regras de senha: 6+ caracteres, 1 maiuscula, 1 numero e 1 caractere especial.'}
                     </Text>
 
                     <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/politica-privacidade')}>
@@ -462,7 +470,11 @@ export default function Perfil() {
                         <Text style={[conteudoStyle.textoBotaoAcao, { color: '#ff4d4d' }]}>Excluir Conta</Text>
                     </Pressable>
                 </View>
+                </View>
             </ScrollView>
         </View>
     );
 }
+
+
+

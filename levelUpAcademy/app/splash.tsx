@@ -18,7 +18,7 @@ export default function Splash() {
             } catch (e) {
                 alert(e);
             } finally {
-                router.replace(user ? './(tabs)/home' : './(auth)/telaLogin');
+                router.replace(user ? '/(tabs)/home' : '/(auth)/telaLogin');
             }
         }
 
