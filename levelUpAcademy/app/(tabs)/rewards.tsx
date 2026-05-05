@@ -96,7 +96,7 @@ const missoesMock: Missao[] = [
         recompensas: [
             { tipo: 'xp', valor: 1000, icone: 'diamond', nome: '1000 XP' },
             { tipo: 'cosmetico', valor: 'traje', icone: 'suit', nome: 'Traje Executivo' },
-            { tipo: 'movel', valor: 'sofa', icone: 'sofa', nome: 'Sofá Gamer' },
+            { tipo: 'movel', valor: 'sofa', icone: 'sofa', nome: 'Sofá Azul' },
         ],
         concluida: false,
     },

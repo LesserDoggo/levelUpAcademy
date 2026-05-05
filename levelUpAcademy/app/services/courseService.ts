@@ -17,6 +17,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../config/firebaseConfig";
+import { buscarCursoCatalogo, buscarModuloCatalogo } from "./courseCatalogService";
 
 // --------------------------------------------------------------------------
 // INTERFACES / TIPOS
@@ -678,7 +679,44 @@ export async function getCursoAtual(
   uid: string,
 ): Promise<CursoProgresso | null> {
   const progressos = await buscarProgressoUsuario(uid);
-  if (progressos.length === 0) return null;
+  if (progressos.length === 0) {
+    const usuarioSnap = await getDoc(doc(db, "usuarios", uid));
+    const cursosProgresso = usuarioSnap.data()?.cursosProgresso as
+      | Record<
+          string,
+          {
+            cursoId: string;
+            titulo: string;
+            ultimoModuloId: string | null;
+            porcentagem: number;
+            atualizadoEm?: { seconds?: number };
+          }
+        >
+      | undefined;
+
+    const progressoAtual = Object.values(cursosProgresso ?? {}).sort((a, b) => {
+      const aTime = a.atualizadoEm?.seconds ?? 0;
+      const bTime = b.atualizadoEm?.seconds ?? 0;
+      return bTime - aTime;
+    })[0];
+
+    if (!progressoAtual) return null;
+
+    const curso = buscarCursoCatalogo(progressoAtual.cursoId);
+    const modulo = progressoAtual.ultimoModuloId
+      ? buscarModuloCatalogo(
+          progressoAtual.cursoId,
+          progressoAtual.ultimoModuloId,
+        )?.modulo
+      : null;
+
+    return {
+      id: progressoAtual.cursoId,
+      titulo: curso?.titulo ?? progressoAtual.titulo,
+      aulaAtual: modulo?.titulo ?? "Iniciando...",
+      porcentagem: progressoAtual.porcentagem,
+    };
+  }
 
   // Ordena por data de atualização
   const progresso = progressos.sort((a, b) => {
