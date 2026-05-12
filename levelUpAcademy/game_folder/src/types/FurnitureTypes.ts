@@ -24,4 +24,5 @@ export interface RoomFurnitureItem {
   itemId: string;
   x: number;
   y: number;
+  rotation?: number;
 }

@@ -4,6 +4,8 @@ import { useGameStore } from "../store/gameStore";
 
 export class InventoryUI {
   private container?: Phaser.GameObjects.Container;
+  private dragPrevious: Phaser.Math.Vector2 | null = null;
+  private dragBound = false;
 
   create(scene: Phaser.Scene, onSelectFurniture: (itemId: string) => void) {
     this.container = scene.add.container(16, 478).setDepth(9000);
@@ -21,6 +23,12 @@ export class InventoryUI {
       fontStyle: "bold",
     });
     this.container?.add([panel, title]);
+    this.enableDrag(scene, panel);
+
+    title.setInteractive({ useHandCursor: true }).on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      pointer.event.stopPropagation();
+      this.dragPrevious = new Phaser.Math.Vector2(pointer.x, pointer.y);
+    });
 
     const inventory = useGameStore.getState().inventory.furniture;
     Object.entries(furnitureData).forEach(([itemId, definition], index) => {
@@ -33,8 +41,30 @@ export class InventoryUI {
         fontSize: "11px",
         lineSpacing: 3,
       });
-      button.on("pointerdown", () => onSelectFurniture(itemId));
+      button.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        pointer.event.stopPropagation();
+        onSelectFurniture(itemId);
+      });
       this.container?.add([button, label]);
+    });
+  }
+
+  private enableDrag(scene: Phaser.Scene, panel: Phaser.GameObjects.Rectangle) {
+    panel.setInteractive({ useHandCursor: true });
+    panel.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      pointer.event.stopPropagation();
+      this.dragPrevious = new Phaser.Math.Vector2(pointer.x, pointer.y);
+    });
+    if (this.dragBound) return;
+    this.dragBound = true;
+    scene.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      if (!this.dragPrevious || !pointer.isDown || !this.container?.visible) return;
+      this.container.x += pointer.x - this.dragPrevious.x;
+      this.container.y += pointer.y - this.dragPrevious.y;
+      this.dragPrevious.set(pointer.x, pointer.y);
+    });
+    scene.input.on("pointerup", () => {
+      this.dragPrevious = null;
     });
   }
 

@@ -13,10 +13,10 @@ export class RoomManager {
     this.room = new Room(scene);
   }
 
-  renderItems(scene: Phaser.Scene, items: RoomFurnitureItem[]) {
+  renderItems(scene: Phaser.Scene, items: RoomFurnitureItem[], onSelect?: (item: RoomFurnitureItem) => void) {
     this.furniture.forEach((item) => item.destroy());
     this.furniture = items.map((item) => {
-      const furniture = new Furniture(scene, item);
+      const furniture = new Furniture(scene, item, onSelect);
       this.depthSystem.update(furniture, 12);
       return furniture;
     });

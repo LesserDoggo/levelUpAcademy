@@ -1,13 +1,16 @@
 import Phaser from "phaser";
 import { clothingData } from "../data/clothingData";
+import { furnitureData } from "../data/furnitureData";
 import { GameManager } from "../managers/GameManager";
 import { PlayerManager } from "../managers/PlayerManager";
 import { RoomManager } from "../managers/RoomManager";
 import { useGameStore } from "../store/gameStore";
+import type { RoomFurnitureItem } from "../types/FurnitureTypes";
 import { CharacterCustomizationUI } from "../ui/CharacterCustomizationUI";
 import { InventoryUI } from "../ui/InventoryUI";
 import { PlacementUI } from "../ui/PlacementUI";
 import { ShopUI } from "../ui/ShopUI";
+import { canPlaceItem } from "../utils/collision";
 import { listenNativeMessages, postToNative } from "../utils/webviewBridge";
 
 export class GameScene extends Phaser.Scene {
@@ -21,6 +24,9 @@ export class GameScene extends Phaser.Scene {
   private coinsText?: Phaser.GameObjects.Text;
   private unsubscribeNative?: () => void;
   private activePanel: "none" | "avatar" | "inventory" | "shop" = "none";
+  private selectedFurniture: RoomFurnitureItem | null = null;
+  private editPanel?: Phaser.GameObjects.Container;
+  private editPanelTitle?: Phaser.GameObjects.Text;
 
   constructor() {
     super("GameScene");
@@ -30,7 +36,7 @@ export class GameScene extends Phaser.Scene {
     const store = useGameStore.getState();
     this.cameras.main.setBounds(0, 0, 960, 640);
     this.roomManager.create(this);
-    this.roomManager.renderItems(this, store.roomItems);
+    this.renderRoomItems();
     this.playerManager.create(this, store.clothes);
     this.createHud();
     this.bindInput();
@@ -84,6 +90,7 @@ export class GameScene extends Phaser.Scene {
       () => this.cancelPlacement(),
     );
     this.customizationUI.create(this, (itemId) => this.equipClothing(itemId));
+    this.createFurnitureEditPanel();
   }
 
   private createMenuButtons() {
@@ -159,7 +166,7 @@ export class GameScene extends Phaser.Scene {
       }
       if (message.type === "SYNC_ROOM_ITEMS" && Array.isArray(message.roomItems)) {
         useGameStore.getState().setRoomItems(message.roomItems);
-        this.roomManager.renderItems(this, useGameStore.getState().roomItems);
+        this.renderRoomItems();
       }
       if (message.type === "START_PLACEMENT") this.startPlacement(message.itemId);
     });
@@ -167,7 +174,7 @@ export class GameScene extends Phaser.Scene {
 
   private refreshFromStore() {
     const store = useGameStore.getState();
-    this.roomManager.renderItems(this, store.roomItems);
+    this.renderRoomItems();
     this.playerManager.player?.setClothes(store.clothes);
   }
 
@@ -189,7 +196,7 @@ export class GameScene extends Phaser.Scene {
     const inventory = this.gameManager.inventory.consumeFurniture(item.itemId);
     await this.gameManager.firebase.saveInventory(inventory);
     await this.gameManager.firebase.saveRoomItems();
-    this.roomManager.renderItems(this, useGameStore.getState().roomItems);
+    this.renderRoomItems();
     this.inventoryUI.render(this, (itemId) => this.startPlacement(itemId));
     this.placementUI.setActive(false);
   }
@@ -222,6 +229,113 @@ export class GameScene extends Phaser.Scene {
     if (!patch) return;
     await this.gameManager.firebase.saveClothes(patch);
     this.playerManager.player?.setClothes(useGameStore.getState().clothes);
+  }
+
+  private renderRoomItems() {
+    this.roomManager.renderItems(this, useGameStore.getState().roomItems, (item) => this.selectFurniture(item));
+  }
+
+  private createFurnitureEditPanel() {
+    const panel = this.add.rectangle(0, 0, 210, 164, 0xffffff, 0.96).setOrigin(0).setStrokeStyle(1, 0xd6dce5);
+    this.editPanelTitle = this.add.text(12, 10, "Mover item", {
+      color: "#243447",
+      fontFamily: "Arial",
+      fontSize: "16px",
+      fontStyle: "bold",
+    });
+
+    this.editPanel = this.add.container(734, 292, [panel, this.editPanelTitle]).setDepth(9100).setVisible(false);
+    this.enablePanelDrag(panel, this.editPanel);
+
+    const buttons = [
+      { label: "Cima", x: 74, y: 46, action: () => this.moveSelectedFurniture(0, -1) },
+      { label: "Esq", x: 24, y: 84, action: () => this.moveSelectedFurniture(-1, 0) },
+      { label: "Dir", x: 124, y: 84, action: () => this.moveSelectedFurniture(1, 0) },
+      { label: "Baixo", x: 68, y: 84, action: () => this.moveSelectedFurniture(0, 1) },
+      { label: "Girar", x: 24, y: 122, action: () => this.rotateSelectedFurniture() },
+      { label: "Fechar", x: 112, y: 122, action: () => this.hideFurnitureEditPanel() },
+    ];
+
+    buttons.forEach((button) => {
+      const background = this.add
+        .rectangle(button.x, button.y, button.label.length > 5 ? 74 : 44, 28, button.label === "Fechar" ? 0x8b95a5 : 0x4f63ac, 1)
+        .setOrigin(0)
+        .setInteractive({ useHandCursor: true });
+      const label = this.add.text(button.x + 8, button.y + 7, button.label, {
+        color: "#ffffff",
+        fontFamily: "Arial",
+        fontSize: "11px",
+        fontStyle: "bold",
+      });
+      background.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        pointer.event.stopPropagation();
+        button.action();
+      });
+      label.setInteractive({ useHandCursor: true }).on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        pointer.event.stopPropagation();
+        button.action();
+      });
+      this.editPanel?.add([background, label]);
+    });
+  }
+
+  private enablePanelDrag(handle: Phaser.GameObjects.Rectangle, container: Phaser.GameObjects.Container) {
+    let previous: Phaser.Math.Vector2 | null = null;
+    handle.setInteractive({ useHandCursor: true });
+    handle.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      pointer.event.stopPropagation();
+      previous = new Phaser.Math.Vector2(pointer.x, pointer.y);
+    });
+    this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      if (!previous || !pointer.isDown || !container.visible) return;
+      container.x += pointer.x - previous.x;
+      container.y += pointer.y - previous.y;
+      previous.set(pointer.x, pointer.y);
+    });
+    this.input.on("pointerup", () => {
+      previous = null;
+    });
+  }
+
+  private selectFurniture(item: RoomFurnitureItem) {
+    this.selectedFurniture = item;
+    const definition = furnitureData[item.itemId];
+    this.editPanelTitle?.setText(definition ? `Mover ${definition.name}` : "Mover item");
+    this.editPanel?.setVisible(true);
+    postToNative({ type: "GAME_EVENT", event: "furniture-selected", payload: { itemId: item.itemId, id: item.id } });
+  }
+
+  private hideFurnitureEditPanel() {
+    this.selectedFurniture = null;
+    this.editPanel?.setVisible(false);
+  }
+
+  private async moveSelectedFurniture(deltaX: number, deltaY: number) {
+    if (!this.selectedFurniture?.id) return;
+    const store = useGameStore.getState();
+    const current = store.roomItems.find((item) => item.id === this.selectedFurniture?.id);
+    if (!current) return;
+
+    const next = { ...current, x: current.x + deltaX, y: current.y + deltaY };
+    if (!canPlaceItem(next.itemId, next, store.roomItems, next.id)) return;
+
+    store.setRoomItems(store.roomItems.map((item) => (item.id === next.id ? next : item)));
+    this.selectedFurniture = next;
+    this.renderRoomItems();
+    await this.gameManager.firebase.saveRoomItems();
+  }
+
+  private async rotateSelectedFurniture() {
+    if (!this.selectedFurniture?.id) return;
+    const store = useGameStore.getState();
+    const current = store.roomItems.find((item) => item.id === this.selectedFurniture?.id);
+    if (!current) return;
+
+    const next = { ...current, rotation: ((current.rotation ?? 0) + 90) % 360 };
+    store.setRoomItems(store.roomItems.map((item) => (item.id === next.id ? next : item)));
+    this.selectedFurniture = next;
+    this.renderRoomItems();
+    await this.gameManager.firebase.saveRoomItems();
   }
 
   shutdown() {

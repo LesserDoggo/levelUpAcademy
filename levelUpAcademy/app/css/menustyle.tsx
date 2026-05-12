@@ -15,17 +15,17 @@ export const menuStyle = (
     // Desktop
     top: isDesktop ? 0 : undefined,
 
-    height: isDesktop ? '100%' : 100,
-    maxHeight: isDesktop ? undefined : 130,
+    height: isDesktop ? '100%' : 112,
+    maxHeight: isDesktop ? undefined : 142,
     width: isDesktop ? 90 : "100%",
 
     flexDirection: isDesktop ? "column" : "row",
     justifyContent: "space-evenly",
     alignItems: "center",
 
-    paddingBottom: isDesktop ? 0 : 15,
+    paddingBottom: isDesktop ? 0 : 12,
     paddingVertical: isDesktop ? 30 : 0,
-    paddingHorizontal: 20,
+    paddingHorizontal: isDesktop ? 20 : 8,
 
     borderTopWidth: isDesktop ? 0 : 2,
     borderRightWidth: isDesktop ? 3 : 0,

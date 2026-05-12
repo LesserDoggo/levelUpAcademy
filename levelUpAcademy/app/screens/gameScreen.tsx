@@ -41,6 +41,7 @@ export default function GameScreen() {
   const webViewRef = useRef<WebView>(null);
   const directGameContainerRef = useRef<View>(null);
   const directGameRef = useRef<{ destroy: (removeCanvas: boolean, noReturn?: boolean) => void } | null>(null);
+  const handleGameMessageRef = useRef<(rawData: string) => Promise<void> | void>(() => {});
   const sessionSyncedRef = useRef(false);
   const startedAtRef = useRef(Date.now());
   const { width } = useWindowDimensions();
@@ -196,12 +197,16 @@ export default function GameScreen() {
   );
 
   useEffect(() => {
+    handleGameMessageRef.current = handleGameMessage;
+  }, [handleGameMessage]);
+
+  useEffect(() => {
     if (!shouldRenderDirectWeb || typeof window === "undefined") return;
     if (directGameRef.current) return;
 
     window.LevelUpGameBridge = {
       postMessage: (message: string) => {
-        handleGameMessage(message);
+        handleGameMessageRef.current(message);
       },
     };
     window.LevelUpGameAssets = GAME_ASSETS;
@@ -228,7 +233,7 @@ export default function GameScreen() {
       delete window.LevelUpGameBridge;
       delete window.LevelUpGameAssets;
     };
-  }, [addLoadingDetail, handleGameMessage, shouldRenderDirectWeb]);
+  }, [addLoadingDetail, shouldRenderDirectWeb]);
 
   return (
     <View style={styles.screen}>
