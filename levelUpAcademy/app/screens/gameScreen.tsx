@@ -1,305 +1,413 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
-import conteudoStyle from '../css/conteudostyle';
-import mascara from '../css/style';
-import {
-    deselectObject,
-    GAME_CONFIG,
-    GameState,
-    getCharacterDirection,
-    initializeGameState,
-    selectObject,
-    setCharacterTarget,
-    updateGameState,
-} from '../services/gameEngine';
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Constants from "expo-constants";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { WebView, WebViewMessageEvent } from "react-native-webview";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { GAME_ASSETS } from "@/constants/gameAssetMap";
+import { GAME_HTML } from "@/constants/gameBundleHtml";
+import { db } from "../config/firebaseConfig";
+import { useAuth } from "../context/AuthContext";
+
+type GameMessage =
+  | { type: "GAME_READY" }
+  | { type: "COINS_CHANGED"; coins: number }
+  | { type: "INVENTORY_CHANGED"; inventory: unknown }
+  | { type: "CLOTHES_CHANGED"; clothes: unknown }
+  | { type: "ROOM_ITEMS_CHANGED"; roomItems: unknown }
+  | { type: "GAME_EVENT"; event: string; payload?: unknown }
+  | { type: "ERROR"; message: string };
+
+function getGameUrl() {
+  const extraUrl = Constants.expoConfig?.extra?.gameUrl as string | undefined;
+  const envUrl = process.env.EXPO_PUBLIC_GAME_URL;
+  if (envUrl) return envUrl;
+  if (extraUrl) return extraUrl;
+  return null;
+}
+
+const LOADING_STEPS = [
+  "Preparando WebView...",
+  "Carregando HTML embutido...",
+  "Inicializando Phaser...",
+  "Registrando cenas do jogo...",
+  "Carregando sprites e UI...",
+  "Abrindo comunicacao React Native <-> Phaser...",
+  "Sincronizando sessao Firebase...",
+  "Montando quarto do jogador...",
+];
 
 export default function GameScreen() {
-    const { width, height } = useWindowDimensions();
-    const isDesktop = width > 768;
-    const router = useRouter();
-    const canvasRef = useRef<View>(null);
+  const webViewRef = useRef<WebView>(null);
+  const directGameContainerRef = useRef<View>(null);
+  const directGameRef = useRef<{ destroy: (removeCanvas: boolean, noReturn?: boolean) => void } | null>(null);
+  const sessionSyncedRef = useRef(false);
+  const startedAtRef = useRef(Date.now());
+  const { width } = useWindowDimensions();
+  const { user, dadosUsuario, recarregarDados } = useAuth();
+  const [ready, setReady] = useState(false);
+  const [lastEvent, setLastEvent] = useState("Carregando jogo...");
+  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [loadingDetails, setLoadingDetails] = useState<string[]>(["Aguardando a WebView montar."]);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const isDesktop = width >= 860;
+  const gameUrl = useMemo(() => getGameUrl(), []);
+  const webViewSource = useMemo(() => (gameUrl ? { uri: gameUrl } : { html: GAME_HTML, baseUrl: "" }), [gameUrl]);
+  const shouldRenderDirectWeb = Platform.OS === "web";
 
-    // Calcular tamanho do canvas baseado na tela disponível
-    const canvasWidth = Math.min(width - (isDesktop ? 130 : 30), 600);
-    const canvasHeight = Math.min(height - (isDesktop ? 100 : 380), 400);
+  const addLoadingDetail = useCallback((detail: string) => {
+    setLoadingDetails((current) => [detail, ...current].slice(0, 5));
+  }, []);
 
-    // Estado do jogo
-    const [gameState, setGameState] = useState<GameState>(() =>
-        initializeGameState(canvasWidth, canvasHeight)
-    );
+  useEffect(() => {
+    if (ready) return;
 
-    // Referência para o loop de animação
-    const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const interval = setInterval(() => {
+      setLoadingStepIndex((current) => (current + 1) % LOADING_STEPS.length);
+      setElapsedSeconds(Math.round((Date.now() - startedAtRef.current) / 1000));
+    }, 900);
 
-    // Loop de atualização do jogo
-    useEffect(() => {
-        gameLoopRef.current = setInterval(() => {
-            setGameState((prevState) => updateGameState(prevState, 16));
-        }, 16);
+    return () => clearInterval(interval);
+  }, [ready]);
 
-        return () => {
-            if (gameLoopRef.current) {
-                clearInterval(gameLoopRef.current);
-            }
-        };
-    }, []);
+  useEffect(() => {
+    if (ready) return;
 
-    // Atualizar tamanho da sala quando a tela redimensiona
-    useEffect(() => {
-        setGameState((prevState) =>
-            initializeGameState(canvasWidth, canvasHeight)
-        );
-    }, [canvasWidth, canvasHeight]);
+    const timer = setTimeout(() => {
+      addLoadingDetail(
+        Platform.OS === "web"
+          ? "Ainda sem GAME_READY. No Expo Web, o react-native-webview pode nao executar a ponte nativa; use Android/iOS para validar WebView real."
+          : "Ainda sem GAME_READY. Verifique se app/gameBundleHtml.ts foi regenerado com npm run build:game.",
+      );
+    }, 8000);
 
-    // Manipular clique/toque no chão (compatível com Web e Mobile)
-    const handleFloorPress = (event: any) => {
-        let locationX = 0;
-        let locationY = 0;
+    return () => clearTimeout(timer);
+  }, [addLoadingDetail, ready]);
 
-        // Para Mobile (React Native)
-        if (event.nativeEvent.locationX !== undefined) {
-            locationX = event.nativeEvent.locationX;
-            locationY = event.nativeEvent.locationY;
+  const sendToGame = useCallback(
+    (message: unknown) => {
+      const payload = JSON.stringify(message);
+      if (shouldRenderDirectWeb && typeof window !== "undefined") {
+        window.dispatchEvent(new MessageEvent("levelup-native-message", { data: payload }));
+        return;
+      }
+      webViewRef.current?.postMessage(payload);
+    },
+    [shouldRenderDirectWeb],
+  );
+
+  const loadGameData = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const snapshot = await getDoc(doc(db, "usuarios", user.uid));
+      const data = snapshot.data();
+      if (data?.inventory) sendToGame({ type: "SYNC_INVENTORY", inventory: data.inventory });
+      if (data?.clothes) sendToGame({ type: "SYNC_CLOTHES", clothes: data.clothes });
+      if (data?.roomItems) sendToGame({ type: "SYNC_ROOM_ITEMS", roomItems: data.roomItems });
+      addLoadingDetail("Dados do quarto carregados pelo app autenticado.");
+    } catch (error) {
+      addLoadingDetail("Nao foi possivel carregar usuarios/{uid}; usando estado local inicial.");
+      console.warn("Erro ao carregar dados do jogo:", error);
+    }
+  }, [addLoadingDetail, sendToGame, user?.uid]);
+
+  const syncSession = useCallback(async () => {
+    sendToGame({
+      type: "AUTH",
+      uid: user?.uid ?? "guest",
+      coins: dadosUsuario?.moedas ?? 0,
+      firebaseCustomToken: undefined,
+    });
+    sendToGame({ type: "SYNC_COINS", coins: dadosUsuario?.moedas ?? 0 });
+    await loadGameData();
+  }, [dadosUsuario?.moedas, loadGameData, sendToGame, user]);
+
+  const handleGameMessage = useCallback(
+    async (rawData: string) => {
+      try {
+        const message = JSON.parse(rawData) as GameMessage;
+
+        if (message.type === "GAME_READY") {
+          setReady(true);
+          setLastEvent("Jogo pronto");
+          addLoadingDetail("Phaser enviou GAME_READY.");
+          if (!sessionSyncedRef.current) {
+            sessionSyncedRef.current = true;
+            await syncSession();
+          }
+          return;
         }
-        // Para Web (React)
-        else if (event.nativeEvent.offsetX !== undefined) {
-            locationX = event.nativeEvent.offsetX;
-            locationY = event.nativeEvent.offsetY;
-        }
-        // Fallback para coordenadas relativas
-        else if (canvasRef.current && event.nativeEvent.clientX !== undefined) {
-            const rect = (canvasRef.current as any).getBoundingClientRect?.();
-            if (rect) {
-                locationX = event.nativeEvent.clientX - rect.left;
-                locationY = event.nativeEvent.clientY - rect.top;
-            }
+
+        if (message.type === "COINS_CHANGED") {
+          setLastEvent(`Moedas sincronizadas: ${message.coins}`);
+          addLoadingDetail(`Moedas sincronizadas: ${message.coins}.`);
+          if (user?.uid) await setDoc(doc(db, "usuarios", user.uid), { moedas: message.coins }, { merge: true });
+          await recarregarDados();
+          return;
         }
 
-        const targetX = locationX - GAME_CONFIG.CHARACTER_WIDTH / 2;
-        const targetY = locationY - GAME_CONFIG.CHARACTER_HEIGHT / 2;
-
-        setGameState((prevState) => ({
-            ...prevState,
-            character: setCharacterTarget(
-                prevState.character,
-                targetX,
-                targetY,
-                canvasWidth,
-                canvasHeight
-            ),
-        }));
-    };
-
-    // Manipular clique em objeto
-    const handleObjectPress = (objectId: string) => {
-        setGameState((prevState) => selectObject(prevState, objectId));
-    };
-
-    // Manipular ações com objeto selecionado
-    const handleCustomizeObject = () => {
-        const selected = gameState.selectedObject;
-        if (selected) {
-            Alert.alert(
-                `Personalizar ${selected.name}`,
-                `Você quer personalizar o(a) ${selected.name}?`,
-                [
-                    { text: 'Cancelar', onPress: () => { } },
-                    {
-                        text: 'Personalizar',
-                        onPress: () => {
-                            Alert.alert('Em Breve', 'Tela de personalização em desenvolvimento');
-                        },
-                    },
-                ]
-            );
+        if (message.type === "INVENTORY_CHANGED") {
+          setLastEvent("Inventario atualizado");
+          addLoadingDetail("Inventario atualizado pelo jogo.");
+          if (user?.uid) await setDoc(doc(db, "usuarios", user.uid), { inventory: message.inventory }, { merge: true });
+          return;
         }
-    };
 
-    const handleUseObject = () => {
-        const selected = gameState.selectedObject;
-        if (selected) {
-            Alert.alert(
-                `Usar ${selected.name}`,
-                `Você quer usar o(a) ${selected.name}?`,
-                [
-                    { text: 'Cancelar', onPress: () => { } },
-                    {
-                        text: 'Usar',
-                        onPress: () => {
-                            Alert.alert('Sucesso', `Você usou o(a) ${selected.name}`);
-                        },
-                    },
-                ]
-            );
+        if (message.type === "CLOTHES_CHANGED") {
+          setLastEvent("Roupas sincronizadas");
+          addLoadingDetail("Roupas sincronizadas pelo jogo.");
+          if (user?.uid) await setDoc(doc(db, "usuarios", user.uid), { clothes: message.clothes }, { merge: true });
+          return;
         }
+
+        if (message.type === "ROOM_ITEMS_CHANGED") {
+          setLastEvent("Quarto salvo");
+          addLoadingDetail("Room items salvos/sincronizados.");
+          if (user?.uid) await setDoc(doc(db, "usuarios", user.uid), { roomItems: message.roomItems }, { merge: true });
+          return;
+        }
+
+        if (message.type === "GAME_EVENT") {
+          setLastEvent(message.event);
+          addLoadingDetail(`Evento Phaser: ${message.event}.`);
+          return;
+        }
+
+        if (message.type === "ERROR") {
+          setLastEvent(message.message);
+          addLoadingDetail(`Erro Phaser: ${message.message}`);
+          console.warn("Phaser WebView error:", message.message);
+        }
+      } catch (error) {
+        addLoadingDetail("Mensagem nao JSON ignorada pela ponte WebView.");
+        if (!String(rawData).includes("FirebaseError")) {
+          console.warn("Mensagem invalida recebida do jogo:", error);
+        }
+      }
+    },
+    [addLoadingDetail, recarregarDados, syncSession, user?.uid],
+  );
+
+  const handleMessage = useCallback(
+    async (event: WebViewMessageEvent) => {
+      await handleGameMessage(event.nativeEvent.data);
+    },
+    [handleGameMessage],
+  );
+
+  useEffect(() => {
+    if (!shouldRenderDirectWeb || typeof window === "undefined") return;
+    if (directGameRef.current) return;
+
+    window.LevelUpGameBridge = {
+      postMessage: (message: string) => {
+        handleGameMessage(message);
+      },
+    };
+    window.LevelUpGameAssets = GAME_ASSETS;
+
+    const mount = async () => {
+      try {
+        const container = document.getElementById("levelup-direct-phaser-game");
+        if (!container) return;
+        const { createLevelUpGame } = await import("../../game_folder/src/createPhaserGame");
+        directGameRef.current = createLevelUpGame(container);
+        addLoadingDetail("Phaser montado diretamente no DOM web.");
+      } catch (error) {
+        setLastEvent("Erro ao abrir Phaser web");
+        addLoadingDetail(`Erro no Phaser direto: ${String(error)}`);
+        console.warn("Erro ao montar Phaser direto:", error);
+      }
     };
 
-    const handleCloseSelection = () => {
-        setGameState((prevState) => deselectObject(prevState));
+    mount();
+
+    return () => {
+      directGameRef.current?.destroy(true);
+      directGameRef.current = null;
+      delete window.LevelUpGameBridge;
+      delete window.LevelUpGameAssets;
     };
+  }, [addLoadingDetail, handleGameMessage, shouldRenderDirectWeb]);
 
-    const handleGoBack = () => {
-        router.push('/(tabs)/home');
-    };
-
-    const characterDirection = getCharacterDirection(gameState.character);
-    const selectedObject = gameState.selectedObject;
-
-    return (
-        <View
-            style={[
-                mascara.container,
-                {
-                    flex: 1,
-                    paddingLeft: isDesktop ? 90 : 0,
-                }
-            ]}
-        >
-            <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{
-                    flexGrow: 1,
-                    paddingBottom: isDesktop ? 20 : 160,
-                    paddingHorizontal: isDesktop ? 20 : 10,
-                    paddingTop: isDesktop ? 20 : 15,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                }}
-                scrollEnabled={true}
-            >
-                {/* TÍTULO */}
-                <Text style={conteudoStyle.titulo}>Seu Quarto</Text>
-
-                {/* CANVAS DO JOGO */}
-                <Pressable
-                    ref={canvasRef}
-                    style={[
-                        conteudoStyle.gameCanvas,
-                        {
-                            width: canvasWidth,
-                            height: canvasHeight,
-                            marginTop: 10,
-                            marginBottom: 15,
-                        }
-                    ]}
-                    onPress={handleFloorPress}
-                >
-                    {/* OBJETOS DO JOGO */}
-                    {gameState.gameObjects.map((obj) => (
-                        <Pressable
-                            key={obj.id}
-                            style={[
-                                conteudoStyle.gameObject,
-                                {
-                                    left: obj.position.x,
-                                    top: obj.position.y,
-                                    width: obj.width,
-                                    height: obj.height,
-                                    borderWidth: obj.isSelected ? 3 : 1,
-                                    borderColor: obj.isSelected ? '#836fd1' : '#2e354d',
-                                }
-                            ]}
-                            onPress={() => handleObjectPress(obj.id)}
-                        >
-                            <MaterialCommunityIcons
-                                name={obj.icon as any}
-                                size={32}
-                                color={obj.isSelected ? '#836fd1' : '#60519b'}
-                            />
-                            <Text style={conteudoStyle.gameObjectLabel}>{obj.name}</Text>
-                        </Pressable>
-                    ))}
-
-                    {/* PERSONAGEM */}
-                    <View
-                        style={[
-                            conteudoStyle.character,
-                            {
-                                left: gameState.character.position.x,
-                                top: gameState.character.position.y,
-                                width: gameState.character.width,
-                                height: gameState.character.height,
-                            }
-                        ]}
-                    >
-                        <MaterialCommunityIcons
-                            name={
-                                characterDirection === 'up'
-                                    ? 'arrow-up-circle'
-                                    : characterDirection === 'down'
-                                        ? 'arrow-down-circle'
-                                        : characterDirection === 'left'
-                                            ? 'arrow-left-circle'
-                                            : characterDirection === 'right'
-                                                ? 'arrow-right-circle'
-                                                : 'account-circle'
-                            }
-                            size={40}
-                            color="#60519b"
-                        />
-                    </View>
-                </Pressable>
-
-                {/* PAINEL DE INFORMAÇÕES E CONTROLES */}
-                {selectedObject !== null ? (
-                    <View style={[conteudoStyle.gameInfoPanel, { width: canvasWidth, marginHorizontal: 10 }]}>
-                        <View style={conteudoStyle.objectSelectionPanel}>
-                            <View style={conteudoStyle.objectSelectionHeader}>
-                                <MaterialCommunityIcons
-                                    name={selectedObject.icon as any}
-                                    size={32}
-                                    color="#836fd1"
-                                />
-                                <Text style={conteudoStyle.objectSelectionTitle}>
-                                    {selectedObject.name}
-                                </Text>
-                                <Pressable onPress={handleCloseSelection}>
-                                    <MaterialCommunityIcons name="close" size={24} color="#bfc0d1" />
-                                </Pressable>
-                            </View>
-
-                            <Text style={conteudoStyle.objectSelectionType}>
-                                Tipo: {selectedObject.type === 'furniture' ? 'Móvel' : 'Decoração'}
-                            </Text>
-
-                            <View style={conteudoStyle.objectActionButtons}>
-                                <Pressable
-                                    style={[conteudoStyle.botao, conteudoStyle.botaoCustomize]}
-                                    onPress={handleCustomizeObject}
-                                >
-                                    <MaterialCommunityIcons name="palette" size={18} color="#fff" style={{ marginRight: 6 }} />
-                                    <Text style={conteudoStyle.textoBotao}>Personalizar</Text>
-                                </Pressable>
-
-                                <Pressable
-                                    style={[conteudoStyle.botao, conteudoStyle.botaoUse]}
-                                    onPress={handleUseObject}
-                                >
-                                    <MaterialCommunityIcons name="check" size={18} color="#fff" style={{ marginRight: 6 }} />
-                                    <Text style={conteudoStyle.textoBotao}>Usar</Text>
-                                </Pressable>
-                            </View>
-                        </View>
-                    </View>
-                ) : (
-                    <View style={[conteudoStyle.gameInfoPanel, { width: canvasWidth, marginHorizontal: 10 }]}>
-                        <View style={conteudoStyle.gameStatusPanel}>
-                            <Text style={conteudoStyle.gameStatusText}>
-                                Toque em um objeto para interagir ou clique no chão para mover o personagem
-                            </Text>
-                            <Pressable
-                                style={[conteudoStyle.botao, { marginTop: 10 }]}
-                                onPress={handleGoBack}
-                            >
-                                <MaterialCommunityIcons name="arrow-left" size={18} color="#fff" style={{ marginRight: 6 }} />
-                                <Text style={conteudoStyle.textoBotao}>Voltar</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                )}
-            </ScrollView>
+  return (
+    <View style={styles.screen}>
+      <View style={[styles.header, !isDesktop && styles.headerMobile, isDesktop && styles.headerDesktop]}>
+        <View>
+          <Text style={[styles.title, !isDesktop && styles.titleMobile]}>Quarto do Gecko</Text>
+          <Text style={styles.subtitle}>{lastEvent}</Text>
         </View>
-    );
+
+        <View style={styles.actions}>
+          <View style={styles.coinBadge}>
+            <MaterialCommunityIcons name="star-four-points-circle" size={18} color="#f4c95d" />
+            <Text style={styles.coinText}>{dadosUsuario?.moedas ?? 0}</Text>
+          </View>
+          <Pressable style={styles.iconButton} onPress={() => sendToGame({ type: "SYNC_COINS", coins: dadosUsuario?.moedas ?? 0 })}>
+            <MaterialCommunityIcons name="sync" size={20} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.webViewShell}>
+        {shouldRenderDirectWeb ? (
+          <View
+            ref={directGameContainerRef}
+            nativeID="levelup-direct-phaser-game"
+            style={styles.directGameContainer}
+          />
+        ) : (
+          <WebView
+            ref={webViewRef}
+            source={webViewSource}
+            style={styles.webView}
+            originWhitelist={["*"]}
+            javaScriptEnabled
+            domStorageEnabled
+            allowsInlineMediaPlayback
+            setSupportMultipleWindows={false}
+            onMessage={handleMessage}
+            onLoadEnd={() => {
+              addLoadingDetail(gameUrl ? `WebView carregou URL: ${gameUrl}` : "WebView carregou HTML embutido.");
+              if (!sessionSyncedRef.current) {
+                sessionSyncedRef.current = true;
+                syncSession();
+              }
+            }}
+            onError={() => {
+              setLastEvent("Nao foi possivel abrir o jogo");
+              addLoadingDetail("onError da WebView foi disparado.");
+              Alert.alert("Jogo offline", "Rode npm run build:game ou configure EXPO_PUBLIC_GAME_URL para desenvolvimento.");
+            }}
+          />
+        )}
+
+        {!ready ? (
+          <View pointerEvents="none" style={styles.loadingOverlay}>
+            <MaterialCommunityIcons name="gamepad-variant" size={30} color="#bfc0d1" />
+            <Text style={styles.loadingText}>{LOADING_STEPS[loadingStepIndex]}</Text>
+            <Text style={styles.loadingSubtext}>Tempo aguardando GAME_READY: {elapsedSeconds}s</Text>
+            <View style={styles.loadingLog}>
+              {loadingDetails.map((detail, index) => (
+                <Text key={`${detail}-${index}`} numberOfLines={2} style={styles.loadingLogText}>
+                  {detail}
+                </Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    width: "100%",
+    padding: 6,
+    gap: 6,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  headerDesktop: {
+    paddingRight: 10,
+  },
+  headerMobile: {
+    minHeight: 42,
+  },
+  title: {
+    color: "#bfc0d1",
+    fontSize: 23,
+    fontWeight: "900",
+  },
+  titleMobile: {
+    fontSize: 18,
+  },
+  subtitle: {
+    color: "#8792a2",
+    fontSize: 13,
+    marginTop: 2,
+    maxWidth: 260,
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  coinBadge: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#243447",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+  },
+  coinText: {
+    color: "#fff",
+    fontWeight: "900",
+  },
+  iconButton: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: "#60519b",
+  },
+  webViewShell: {
+    flex: 1,
+    overflow: "hidden",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#60519b",
+    backgroundColor: "#0c101c",
+  },
+  webView: {
+    flex: 1,
+    backgroundColor: "#1c202c",
+  },
+  directGameContainer: {
+    flex: 1,
+    backgroundColor: "#1c202c",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(12,16,28,0.88)",
+  },
+  loadingText: {
+    color: "#bfc0d1",
+    fontWeight: "800",
+    fontSize: 15,
+    textAlign: "center",
+  },
+  loadingSubtext: {
+    color: "#8792a2",
+    fontSize: 12,
+    textAlign: "center",
+  },
+  loadingLog: {
+    width: "88%",
+    maxWidth: 520,
+    marginTop: 8,
+    gap: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(191,192,209,0.25)",
+    backgroundColor: "rgba(28,32,44,0.78)",
+    padding: 10,
+  },
+  loadingLogText: {
+    color: "#bfc0d1",
+    fontSize: 11,
+    lineHeight: 15,
+  },
+});

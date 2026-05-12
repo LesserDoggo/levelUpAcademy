@@ -62,3 +62,7 @@ export const settingsStyles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default function SettingsStylesRoutePlaceholder() {
+  return null;
+}

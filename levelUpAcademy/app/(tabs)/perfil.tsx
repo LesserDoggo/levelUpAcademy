@@ -37,7 +37,7 @@ import mascara from '../css/style';
 import { db, storage } from '../config/firebaseConfig';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
-import { buscarDadosUsuario, deslogarUsuario, UsuarioFirestore } from '../services/authService';
+import { buscarDadosUsuario, UsuarioFirestore } from '../services/authService';
 
 const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
@@ -77,7 +77,7 @@ export default function Perfil() {
     const isDesktop = width > 768;
     const router = useRouter();
 
-    const { user, dadosUsuario: dadosCtx, recarregarDados } = useAuth();
+    const { user, dadosUsuario: dadosCtx, recarregarDados, logout } = useAuth();
 
     const [usuario, setUsuario] = useState<UsuarioFirestore | null>(dadosCtx);
     const [carregando, setCarregando] = useState(!dadosCtx);
@@ -88,6 +88,32 @@ export default function Perfil() {
     const [canalNotificacao, setCanalNotificacao] = useState<'email' | 'push'>('email');
     const [frequenciaNotificacao, setFrequenciaNotificacao] = useState<'diaria' | 'semanal' | 'mensal'>('semanal');
     const [notificacaoAtiva, setNotificacaoAtiva] = useState(true);
+
+    async function salvarPreferenciasNotificacao(
+        canal = canalNotificacao,
+        frequencia = frequenciaNotificacao,
+        habilitado = notificacaoAtiva,
+    ) {
+        if (!user) return;
+        try {
+            await updateDoc(doc(db, 'usuarios', user.uid), {
+                notificacoes: {
+                    canal,
+                    frequencia,
+                    habilitado,
+                },
+                atualizadoEm: serverTimestamp(),
+            });
+            setUsuario((atual) => atual ? {
+                ...atual,
+                notificacoes: { canal, frequencia, habilitado },
+            } : atual);
+            await recarregarDados();
+        } catch (error) {
+            console.warn('Erro ao salvar notificacoes:', error);
+            Alert.alert('Erro', 'Nao foi possivel salvar as preferencias de notificacao.');
+        }
+    }
 
     useEffect(() => {
         if (dadosCtx) {
@@ -161,12 +187,23 @@ export default function Perfil() {
             const resultado = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true,
-                quality: 0.7,
+                quality: 0.35,
+                base64: true,
             });
             if (resultado.canceled || !resultado.assets[0]?.uri) return;
             const asset = resultado.assets[0];
 
             setSalvando(true);
+            if (asset.base64 && asset.base64.length < 950000) {
+                const contentType = asset.mimeType ?? 'image/jpeg';
+                const fotoUrl = `data:${contentType};base64,${asset.base64}`;
+                await updateDoc(doc(db, 'usuarios', user.uid), { fotoUrl, atualizadoEm: serverTimestamp() });
+                setUsuario((atual) => (atual ? { ...atual, fotoUrl } : atual));
+                await recarregarDados();
+                Alert.alert('Sucesso', 'Foto de perfil atualizada.');
+                return;
+            }
+
             let arquivoParaUpload: Blob;
 
             if (Platform.OS === 'web' && asset.file) {
@@ -193,6 +230,7 @@ export default function Perfil() {
             await recarregarDados();
             Alert.alert('Sucesso', 'Foto de perfil atualizada.');
         } catch (erro: any) {
+            console.warn('Erro ao enviar foto de perfil:', erro);
             const mensagem = erro?.message?.includes('cloudinary_not_configured')
                 ? 'Cloudinary não configurado. Preencha EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME e EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.'
                 : erro?.message?.includes('permission')
@@ -212,7 +250,7 @@ export default function Perfil() {
     // ── Logout ──────────────────────────────────────────────────────────────
     const handleLogout = () => {
         const acaoSair = async () => {
-            await deslogarUsuario();
+            await logout();
             router.replace('/(auth)/telaLogin');
         };
 
@@ -353,7 +391,34 @@ export default function Perfil() {
         );
     }
 
-    if (!usuario) return null;
+    const usuarioSeguro: UsuarioFirestore | null = usuario ?? (user ? {
+        uid: user.uid,
+        nome: user.displayName ?? 'Usuario',
+        email: user.email ?? '',
+        nivel: 1,
+        xpTotal: 0,
+        moedas: 0,
+        diasOfensiva: 0,
+        cursosCompletos: 0,
+        bio: '',
+        fotoUrl: user.photoURL ?? null,
+        criadoEm: null,
+        ultimoLogin: null,
+    } : null);
+
+    if (!usuarioSeguro) {
+        return (
+            <View style={[mascara.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+                <Text style={{ color: '#bfc0d1', textAlign: 'center', marginBottom: 14 }}>
+                    Nao foi possivel carregar o perfil, mas sua sessao ainda pode ser encerrada.
+                </Text>
+                <Pressable style={conteudoStyle.botaoAcao} onPress={handleLogout}>
+                    <MaterialCommunityIcons name="logout" size={20} color="#ff6b35" />
+                    <Text style={[conteudoStyle.textoBotaoAcao, { color: '#ff6b35' }]}>Sair da Conta</Text>
+                </Pressable>
+            </View>
+        );
+    }
 
     return (
         <View style={[
@@ -371,8 +436,8 @@ export default function Perfil() {
                 <View style={[conteudoStyle.cardPerfil, isDesktop && { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]}>
                     <View style={[conteudoStyle.avatarContainer, isDesktop && { marginBottom: 0, marginRight: 28, alignItems: 'center' }]}>
                         <Pressable style={conteudoStyle.avatar} onPress={handleUploadFoto}>
-                            {usuario.fotoUrl
-                                ? <Image source={{ uri: usuario.fotoUrl }} style={{ width: 70, height: 70, borderRadius: 35 }} />
+                            {usuarioSeguro.fotoUrl
+                                ? <Image source={{ uri: usuarioSeguro.fotoUrl }} style={{ width: 94, height: 94, borderRadius: 47 }} resizeMode="cover" />
                                 : <MaterialCommunityIcons name="account-circle" size={60} color="#60519b" />
                             }
                         </Pressable>
@@ -381,10 +446,10 @@ export default function Perfil() {
 
                     {!editando ? (
                         <View style={[conteudoStyle.secaoInfo, isDesktop && { alignItems: 'flex-start', flex: 1 }]}>
-                            <Text style={[conteudoStyle.nomeUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuario.nome}</Text>
-                            <Text style={[conteudoStyle.emailUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuario.email}</Text>
-                            {usuario.bio
-                                ? <Text style={[conteudoStyle.bioUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuario.bio}</Text>
+                            <Text style={[conteudoStyle.nomeUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuarioSeguro.nome}</Text>
+                            <Text style={[conteudoStyle.emailUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuarioSeguro.email}</Text>
+                            {usuarioSeguro.bio
+                                ? <Text style={[conteudoStyle.bioUsuario, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>{usuarioSeguro.bio}</Text>
                                 : <Text style={[{ color: '#666', fontSize: 12, fontStyle: 'italic' }, isDesktop && { textAlign: 'left', alignSelf: 'flex-start' }]}>Sem bio cadastrada.</Text>
                             }
                             <Pressable style={[conteudoStyle.botaoEditar, { marginTop: 12 }, isDesktop && { alignSelf: 'flex-start' }]} onPress={() => setEditando(true)}>
@@ -430,11 +495,11 @@ export default function Perfil() {
 
                 <View style={conteudoStyle.secaoEstatisticas}>
                     {[
-                        { label: 'Nível', valor: usuario.nivel },
-                        { label: 'XP Total', valor: usuario.xpTotal },
-                        { label: 'Moedas', valor: usuario.moedas },
-                        { label: 'Ofensiva', valor: `${usuario.diasOfensiva}d` },
-                        { label: 'Cursos', valor: usuario.cursosCompletos },
+                        { label: 'Nível', valor: usuarioSeguro.nivel },
+                        { label: 'XP Total', valor: usuarioSeguro.xpTotal },
+                        { label: 'Moedas', valor: usuarioSeguro.moedas },
+                        { label: 'Ofensiva', valor: `${usuarioSeguro.diasOfensiva}d` },
+                        { label: 'Cursos', valor: usuarioSeguro.cursosCompletos },
                     ].map(({ label, valor }) => (
                         <View key={label} style={conteudoStyle.estatisticaItem}>
                             <Text style={conteudoStyle.estatisticaValor}>{valor}</Text>
@@ -446,13 +511,26 @@ export default function Perfil() {
                 <View style={{ padding: 16, gap: 10 }}>
                     <View style={[conteudoStyle.botaoAcao, { justifyContent: 'space-between' }]}>
                         <Text style={conteudoStyle.textoBotaoAcao}>Notificações ativas</Text>
-                        <Switch value={notificacaoAtiva} onValueChange={setNotificacaoAtiva} />
+                        <Switch
+                            value={notificacaoAtiva}
+                            onValueChange={(valor) => {
+                                setNotificacaoAtiva(valor);
+                                salvarPreferenciasNotificacao(canalNotificacao, frequenciaNotificacao, valor);
+                            }}
+                        />
                     </View>
                     <View style={[conteudoStyle.botaoAcao, { flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}>
                         <Text style={conteudoStyle.textoBotaoAcao}>Canal de notificação</Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                             {(['email', 'push'] as const).map((canal) => (
-                                <Pressable key={canal} onPress={() => setCanalNotificacao(canal)} style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: canalNotificacao === canal ? '#a855f7' : '#3a3a5c' }]}>
+                                <Pressable
+                                    key={canal}
+                                    onPress={() => {
+                                        setCanalNotificacao(canal);
+                                        salvarPreferenciasNotificacao(canal, frequenciaNotificacao, notificacaoAtiva);
+                                    }}
+                                    style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: canalNotificacao === canal ? '#a855f7' : '#3a3a5c' }]}
+                                >
                                     <Text style={conteudoStyle.textoBotaoEditar}>{canal === 'email' ? 'E-mail' : 'Push'}</Text>
                                 </Pressable>
                             ))}
@@ -462,7 +540,14 @@ export default function Perfil() {
                         <Text style={conteudoStyle.textoBotaoAcao}>Frequencia de notificacoes</Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                             {(['diaria', 'semanal', 'mensal'] as const).map((f) => (
-                                <Pressable key={f} onPress={() => setFrequenciaNotificacao(f)} style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: frequenciaNotificacao === f ? '#a855f7' : '#3a3a5c' }]}>
+                                <Pressable
+                                    key={f}
+                                    onPress={() => {
+                                        setFrequenciaNotificacao(f);
+                                        salvarPreferenciasNotificacao(canalNotificacao, f, notificacaoAtiva);
+                                    }}
+                                    style={[conteudoStyle.botaoEditar, { paddingHorizontal: 12, backgroundColor: frequenciaNotificacao === f ? '#a855f7' : '#3a3a5c' }]}
+                                >
                                     <Text style={conteudoStyle.textoBotaoEditar}>{f === 'diaria' ? 'Diaria' : f === 'semanal' ? 'Semanal' : 'Mensal'}</Text>
                                 </Pressable>
                             ))}

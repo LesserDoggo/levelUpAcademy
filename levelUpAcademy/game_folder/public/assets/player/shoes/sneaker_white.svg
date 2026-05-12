@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="256" viewBox="0 0 192 256">
+  <defs><g id="sh"><rect x="10" y="60" width="13" height="5" rx="2" fill="#f8fafc"/><rect x="25" y="60" width="13" height="5" rx="2" fill="#f8fafc"/></g></defs>
+  <use href="#sh"/><use href="#sh" x="48"/><use href="#sh" x="96"/><use href="#sh" x="144"/>
+  <use href="#sh" y="64"/><use href="#sh" x="48" y="64"/><use href="#sh" x="96" y="64"/><use href="#sh" x="144" y="64"/>
+  <use href="#sh" y="128"/><use href="#sh" x="48" y="128"/><use href="#sh" x="96" y="128"/><use href="#sh" x="144" y="128"/>
+  <use href="#sh" y="192"/><use href="#sh" x="48" y="192"/><use href="#sh" x="96" y="192"/><use href="#sh" x="144" y="192"/>
+</svg>

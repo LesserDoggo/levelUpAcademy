@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="256" viewBox="0 0 192 256">
+  <defs><g id="s"><rect x="13" y="30" width="22" height="24" rx="6" fill="#1f2937"/><path d="M16 31q8 7 16 0" stroke="#6b7280" stroke-width="2" fill="none"/></g></defs>
+  <use href="#s"/><use href="#s" x="48"/><use href="#s" x="96"/><use href="#s" x="144"/>
+  <use href="#s" y="64"/><use href="#s" x="48" y="64"/><use href="#s" x="96" y="64"/><use href="#s" x="144" y="64"/>
+  <use href="#s" y="128"/><use href="#s" x="48" y="128"/><use href="#s" x="96" y="128"/><use href="#s" x="144" y="128"/>
+  <use href="#s" y="192"/><use href="#s" x="48" y="192"/><use href="#s" x="96" y="192"/><use href="#s" x="144" y="192"/>
+</svg>

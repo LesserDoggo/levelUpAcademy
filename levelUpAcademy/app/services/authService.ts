@@ -181,9 +181,7 @@ export async function logarUsuario(
     const credencial = await signInWithEmailAndPassword(auth, email, senha);
     const user = credencial.user;
 
-    await updateDoc(doc(db, "usuarios", user.uid), {
-      ultimoLogin: serverTimestamp(),
-    });
+    await sincronizarUsuarioFirestore(user);
 
     return {
       sucesso: true,

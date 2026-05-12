@@ -188,3 +188,7 @@ export function calcularPorcentagemCurso(
   if (totalModulos === 0) return 0;
   return progresso.modulosConcluidos.length / totalModulos;
 }
+
+export default function CourseCatalogServiceRoutePlaceholder() {
+  return null;
+}

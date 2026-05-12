@@ -275,6 +275,8 @@ const conteudoStyle = StyleSheet.create({
     },
     avatarContainer: {
         marginBottom: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     avatar: {
         width: 100,
@@ -283,6 +285,7 @@ const conteudoStyle = StyleSheet.create({
         backgroundColor: '#1a1f2e',
         justifyContent: 'center',
         alignItems: 'center',
+        overflow: 'hidden',
         borderWidth: 3,
         borderColor: '#60519b',
     },
@@ -869,10 +872,11 @@ const conteudoStyle = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#2e354d',
         borderRadius: 12,
-        paddingHorizontal: 40,
-        paddingVertical: 40,
+        paddingHorizontal: 18,
+        paddingVertical: 22,
         marginVertical: 10,
         alignSelf: 'center',
+        width: '100%',
     },
     lessonBlockTitle: {
         color: '#bfc0d1',
@@ -887,8 +891,8 @@ const conteudoStyle = StyleSheet.create({
         fontSize: 15,
         lineHeight: 22,
         fontFamily: 'Roboto-Regular',
-        textAlign: 'justify',
-        marginHorizontal: 240,
+        textAlign: 'left',
+        marginHorizontal: 0,
     },
     lessonImageBox: {
         width: '100%',

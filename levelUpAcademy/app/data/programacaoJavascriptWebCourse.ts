@@ -395,3 +395,7 @@ export const cursoProgramacaoJavascriptWeb: CursoDetalhado = {
 };
 
 export const cursosCatalogo: CursoDetalhado[] = [cursoProgramacaoJavascriptWeb];
+
+export default function ProgramacaoJavascriptWebCourseRoutePlaceholder() {
+  return null;
+}

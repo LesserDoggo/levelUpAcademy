@@ -5,11 +5,12 @@ import conteudoStyle from "@/app/css/conteudostyle";
 import mascara from "@/app/css/style";
 import {
   buscarModuloCatalogo,
+  buscarProgressoCursoUsuario,
   concluirModuloCursoUsuario,
 } from "@/app/services/courseCatalogService";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -29,11 +30,30 @@ export default function CourseModuleScreen() {
   const { dadosUsuario, recarregarDados } = useAuth();
   const isDesktop = width > 768;
   const [salvando, setSalvando] = useState(false);
+  const [moduloConcluido, setModuloConcluido] = useState(false);
 
   const dadosModulo = useMemo(() => {
     if (!courseId || !moduleId) return null;
     return buscarModuloCatalogo(courseId, moduleId);
   }, [courseId, moduleId]);
+
+  useEffect(() => {
+    let ativo = true;
+
+    async function carregarProgresso() {
+      if (!courseId || !moduleId) return;
+      const progresso = await buscarProgressoCursoUsuario(dadosUsuario?.uid, courseId);
+      if (ativo) {
+        setModuloConcluido(progresso.modulosConcluidos.includes(moduleId));
+      }
+    }
+
+    carregarProgresso();
+
+    return () => {
+      ativo = false;
+    };
+  }, [courseId, dadosUsuario?.uid, moduleId]);
 
   async function concluirModulo() {
     if (!dadosModulo) return;
@@ -53,6 +73,7 @@ export default function CourseModuleScreen() {
         dadosModulo.modulo,
       );
       await recarregarDados();
+      setModuloConcluido(true);
 
       const moedas = dadosModulo.modulo.moedasRecompensa ?? 0;
       const mensagem = resultado.recompensaAplicada
@@ -60,7 +81,6 @@ export default function CourseModuleScreen() {
         : "Este modulo ja estava concluido, entao a recompensa nao foi aplicada novamente.";
 
       Alert.alert("Modulo concluido", mensagem);
-      router.back();
     } catch (error) {
       console.warn("Erro ao concluir modulo:", error);
       Alert.alert(
@@ -100,8 +120,14 @@ export default function CourseModuleScreen() {
       <MenuInf />
 
       <ScrollView
-        style={[conteudoStyle.conteudo, { paddingHorizontal: 14 }]}
-        contentContainerStyle={{ paddingBottom: 30 }}
+        style={{ flex: 1, width: "100%" }}
+        contentContainerStyle={{
+          paddingBottom: isDesktop ? 30 : 160,
+          paddingHorizontal: isDesktop ? 14 : 10,
+          width: "100%",
+          maxWidth: 980,
+          alignSelf: "center",
+        }}
       >
         <View style={conteudoStyle.courseHeader}>
           <Pressable
@@ -125,12 +151,16 @@ export default function CourseModuleScreen() {
         ))}
 
         <Pressable
-          style={[conteudoStyle.botao, { marginVertical: 20 }]}
+          style={[
+            conteudoStyle.botao,
+            { marginVertical: 20 },
+            moduloConcluido && { backgroundColor: "#35b779", borderColor: "#35b779" },
+          ]}
           onPress={concluirModulo}
-          disabled={salvando}
+          disabled={salvando || moduloConcluido}
         >
           <Text style={conteudoStyle.textoBotao}>
-            {salvando ? "Salvando..." : "Concluir modulo"}
+            {salvando ? "Salvando..." : moduloConcluido ? "Modulo concluido" : "Concluir modulo"}
           </Text>
         </Pressable>
       </ScrollView>
