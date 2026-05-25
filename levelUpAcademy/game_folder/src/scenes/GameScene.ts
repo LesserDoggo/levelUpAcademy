@@ -44,6 +44,7 @@ export class GameScene extends Phaser.Scene {
 
     postToNative({ type: "GAME_READY" });
     postToNative({ type: "GAME_EVENT", event: "scene-created" });
+    this.reportRenderDiagnostics("scene-created");
 
     if (!window.ReactNativeWebView && !window.LevelUpGameBridge) {
       this.gameManager.firebase
@@ -55,9 +56,51 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private reportRenderDiagnostics(stage: string) {
+    this.time.delayedCall(150, () => {
+      const canvas = this.game.canvas;
+      const parent = canvas.parentElement;
+      const parentBounds = parent?.getBoundingClientRect();
+      const canvasBounds = canvas.getBoundingClientRect();
+
+      const diagnostics = {
+        stage,
+        renderer: this.game.renderer.type === Phaser.WEBGL ? "webgl" : "canvas",
+        scale: {
+          width: this.scale.width,
+          height: this.scale.height,
+          gameWidth: this.scale.gameSize.width,
+          gameHeight: this.scale.gameSize.height,
+        },
+        canvas: {
+          width: canvas.width,
+          height: canvas.height,
+          cssWidth: Math.round(canvasBounds.width),
+          cssHeight: Math.round(canvasBounds.height),
+        },
+        parent: {
+          cssWidth: Math.round(parentBounds?.width ?? 0),
+          cssHeight: Math.round(parentBounds?.height ?? 0),
+        },
+        objects: this.children.list.length,
+        textures: {
+          playerBody: this.textures.exists("player_body"),
+          geckoBed: this.textures.exists("gecko_bed"),
+        },
+      };
+
+      console.info("[LevelUpGame] render diagnostics", diagnostics);
+      postToNative({ type: "GAME_EVENT", event: "render-diagnostics", payload: diagnostics });
+    });
+  }
+
   update(_: number, delta: number) {
     const player = this.playerManager.player;
     if (!player) return;
+    if (this.isMovementBlocked()) {
+      this.gameManager.movement.stop(player);
+      return;
+    }
     const items = useGameStore.getState().roomItems;
     this.gameManager.movement.update(player, delta, items);
     player.syncFrame();
@@ -121,6 +164,9 @@ export class GameScene extends Phaser.Scene {
 
   private togglePanel(panel: "avatar" | "inventory" | "shop") {
     this.activePanel = this.activePanel === panel ? "none" : panel;
+    if (this.activePanel !== "none") {
+      this.gameManager.movement.stop(this.playerManager.player);
+    }
     this.customizationUI.setVisible(this.activePanel === "avatar");
     this.inventoryUI.setVisible(this.activePanel === "inventory");
     this.shopUI.setVisible(this.activePanel === "shop");
@@ -133,9 +179,14 @@ export class GameScene extends Phaser.Scene {
         this.gameManager.placement.update(pointer, useGameStore.getState().roomItems);
         return;
       }
+      if (this.isMovementBlocked()) return;
       const player = this.playerManager.player;
       if (player) this.gameManager.movement.moveToPointer(player, pointer, useGameStore.getState().roomItems);
     });
+  }
+
+  private isMovementBlocked() {
+    return this.activePanel !== "none" || Boolean(this.selectedFurniture);
   }
 
   private bindNativeMessages() {
@@ -236,7 +287,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createFurnitureEditPanel() {
-    const panel = this.add.rectangle(0, 0, 210, 164, 0xffffff, 0.96).setOrigin(0).setStrokeStyle(1, 0xd6dce5);
+    const panel = this.add.rectangle(0, 0, 210, 204, 0xffffff, 0.96).setOrigin(0).setStrokeStyle(1, 0xd6dce5);
     this.editPanelTitle = this.add.text(12, 10, "Mover item", {
       color: "#243447",
       fontFamily: "Arial",
@@ -254,11 +305,12 @@ export class GameScene extends Phaser.Scene {
       { label: "Baixo", x: 68, y: 84, action: () => this.moveSelectedFurniture(0, 1) },
       { label: "Girar", x: 24, y: 122, action: () => this.rotateSelectedFurniture() },
       { label: "Fechar", x: 112, y: 122, action: () => this.hideFurnitureEditPanel() },
+      { label: "Remover", x: 24, y: 162, action: () => this.removeSelectedFurniture(), danger: true },
     ];
 
     buttons.forEach((button) => {
       const background = this.add
-        .rectangle(button.x, button.y, button.label.length > 5 ? 74 : 44, 28, button.label === "Fechar" ? 0x8b95a5 : 0x4f63ac, 1)
+        .rectangle(button.x, button.y, button.label.length > 5 ? 74 : 44, 28, button.danger ? 0xef626c : button.label === "Fechar" ? 0x8b95a5 : 0x4f63ac, 1)
         .setOrigin(0)
         .setInteractive({ useHandCursor: true });
       const label = this.add.text(button.x + 8, button.y + 7, button.label, {
@@ -299,6 +351,7 @@ export class GameScene extends Phaser.Scene {
 
   private selectFurniture(item: RoomFurnitureItem) {
     this.selectedFurniture = item;
+    this.gameManager.movement.stop(this.playerManager.player);
     const definition = furnitureData[item.itemId];
     this.editPanelTitle?.setText(definition ? `Mover ${definition.name}` : "Mover item");
     this.editPanel?.setVisible(true);
@@ -323,6 +376,22 @@ export class GameScene extends Phaser.Scene {
     this.selectedFurniture = next;
     this.renderRoomItems();
     await this.gameManager.firebase.saveRoomItems();
+  }
+
+  private async removeSelectedFurniture() {
+    if (!this.selectedFurniture?.id) return;
+    const store = useGameStore.getState();
+    const current = store.roomItems.find((item) => item.id === this.selectedFurniture?.id);
+    if (!current) return;
+
+    store.setRoomItems(store.roomItems.filter((item) => item.id !== current.id));
+    const inventory = this.gameManager.inventory.addFurniture(current.itemId);
+    await this.gameManager.firebase.saveInventory(inventory);
+    await this.gameManager.firebase.saveRoomItems();
+    this.inventoryUI.render(this, (itemId) => this.startPlacement(itemId));
+    this.hideFurnitureEditPanel();
+    this.renderRoomItems();
+    postToNative({ type: "GAME_EVENT", event: "furniture-removed", payload: { itemId: current.itemId, id: current.id } });
   }
 
   private async rotateSelectedFurniture() {

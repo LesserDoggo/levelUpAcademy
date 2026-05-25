@@ -5,10 +5,15 @@
 // o Firestore aceitar a requisição antes de desistir.
 // =============================================================================
 
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { auth } from '../config/firebaseConfig';
+import { browserLocalPersistence, onAuthStateChanged, setPersistence, User } from 'firebase/auth';
+import { Platform } from 'react-native';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { auth } from '../config/firebase';
 import { buscarDadosUsuario, deslogarUsuario, logarComGoogle, logarUsuario, UsuarioFirestore } from '../services/authService';
+
+function usaSenhaEmail(firebaseUser: User) {
+    return firebaseUser.providerData.some((provider) => provider.providerId === 'password');
+}
 
 interface AuthContextType {
     user: User | null;
@@ -64,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [dadosUsuario, setDadosUsuario] = useState<UsuarioFirestore | null>(null);
     const [carregando, setCarregando] = useState(true);
 
-    async function recarregarDados() {
+    const recarregarDados = useCallback(async () => {
         if (user) {
             try {
                 const dados = await buscarComRetry(user.uid);
@@ -73,37 +78,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.warn('recarregarDados: erro ao buscar Firestore:', error);
             }
         }
-    }
+    }, [user]);
 
-    async function restoreSession() {
+    const restoreSession = useCallback(async () => {
         if (auth.currentUser) {
             const dados = await buscarComRetry(auth.currentUser.uid);
             setDadosUsuario(dados);
             setUser(auth.currentUser);
         }
-    }
+    }, []);
 
-    async function login(email: string, senha: string) {
+    const login = useCallback(async (email: string, senha: string) => {
         const resultado = await logarUsuario(email, senha);
         return { sucesso: resultado.sucesso, mensagem: resultado.mensagem };
-    }
+    }, []);
 
-    async function loginComGoogle(idToken?: string) {
+    const loginComGoogle = useCallback(async (idToken?: string) => {
         const resultado = await logarComGoogle(idToken);
         return { sucesso: resultado.sucesso, mensagem: resultado.mensagem };
-    }
+    }, []);
 
-    async function logout() {
+    const logout = useCallback(async () => {
         await deslogarUsuario();
         setDadosUsuario(null);
         setUser(null);
-    }
+    }, []);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        let unsubscribe: (() => void) | undefined;
+        let cancelado = false;
+
+        async function iniciarListenerAuth() {
+            if (Platform.OS === 'web') {
+                try {
+                    await setPersistence(auth, browserLocalPersistence);
+                } catch (error) {
+                    console.warn('AuthContext: nao foi possivel reforcar persistencia local:', error);
+                }
+            }
+
+            if (cancelado) return;
+
+            unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
 
             if (firebaseUser) {
+                if (usaSenhaEmail(firebaseUser) && !firebaseUser.emailVerified) {
+                    await firebaseUser.reload();
+                }
+
+                if (usaSenhaEmail(firebaseUser) && !auth.currentUser?.emailVerified) {
+                    await deslogarUsuario();
+                    setUser(null);
+                    setDadosUsuario(null);
+                    setCarregando(false);
+                    return;
+                }
+
                 try {
                     // Força o refresh do token antes de qualquer leitura no Firestore.
                     // Isso garante que o SDK Web já tem o Bearer token atualizado.
@@ -122,13 +153,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // CRÍTICO: setCarregando(false) só é chamado aqui, após tudo resolver.
             // O AuthGuard no _layout.tsx depende disso para não redirecionar cedo.
             setCarregando(false);
-        });
+            });
+        }
 
-        return () => unsubscribe();
+        iniciarListenerAuth();
+
+        return () => {
+            cancelado = true;
+            unsubscribe?.();
+        };
     }, []);
 
+    const valorContexto = useMemo(() => ({
+        user,
+        dadosUsuario,
+        carregando,
+        login,
+        loginComGoogle,
+        logout,
+        restoreSession,
+        recarregarDados,
+    }), [carregando, dadosUsuario, login, loginComGoogle, logout, recarregarDados, restoreSession, user]);
+
     return (
-        <AuthContext.Provider value={{ user, dadosUsuario, carregando, login, loginComGoogle, logout, restoreSession, recarregarDados }}>
+        <AuthContext.Provider value={valorContexto}>
             {children}
         </AuthContext.Provider>
     );

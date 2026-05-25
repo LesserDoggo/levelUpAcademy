@@ -10,11 +10,15 @@ export class MovementSystem {
   private speed = 190;
   private collision = new CollisionSystem();
 
+  stop(player?: Player) {
+    this.target = null;
+    if (player) player.playLayered("idle", player.direction);
+  }
+
   moveToPointer(player: Player, pointer: Phaser.Input.Pointer, roomItems: RoomFurnitureItem[]) {
     const grid = worldToGrid(pointer.worldX, pointer.worldY);
     if (!this.collision.canWalkTo(grid, roomItems)) {
-      this.target = null;
-      player.playLayered("idle", player.direction);
+      this.stop(player);
       return;
     }
     const world = gridToWorld(grid);

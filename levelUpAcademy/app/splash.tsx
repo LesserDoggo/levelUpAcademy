@@ -9,9 +9,11 @@ import mascara from './css/style';
 export default function Splash() {
 
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, carregando } = useAuth();
 
     useEffect(() => {
+        if (carregando) return;
+
         async function Prepare() {
             try {
                 await new Promise(tempo => setTimeout(tempo, 4000))
@@ -23,7 +25,7 @@ export default function Splash() {
         }
 
         Prepare();
-    }, [router, user]);
+    }, [carregando, router, user]);
 
     return (
         <View style={mascara.container}>
@@ -31,12 +33,14 @@ export default function Splash() {
                 source={require("../assets/images/background_placeholder.png")}
                 style={mascara.imgFundo}
             />
-            <LottieView
-                source={require("../assets/images/logoPHolder.json")}
-                autoPlay
-                loop={false}
-                style={mascara.logo}
-            />
+            <View style={{ alignItems: "center", alignContent: 'center', justifyContent: 'center', flex: 1 }}>
+                <LottieView
+                    source={require("../assets/images/logoPHolder.json")}
+                    autoPlay
+                    loop={true}
+                    style={mascara.logo}
+                />
+            </View>
         </View>
     )
 }

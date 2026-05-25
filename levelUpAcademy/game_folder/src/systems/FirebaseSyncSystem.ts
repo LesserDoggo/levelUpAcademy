@@ -9,6 +9,13 @@ export class FirebaseSyncSystem {
   private writesEnabled = false;
 
   async bootstrap(uidFromNative?: string, customToken?: string) {
+    if (uidFromNative && !customToken) {
+      useGameStore.getState().setUid(uidFromNative);
+      this.writesEnabled = false;
+      postToNative({ type: "GAME_EVENT", event: "native-session-linked" });
+      return;
+    }
+
     const user = await ensureGameAuth(customToken);
     this.writesEnabled = true;
     const uid = uidFromNative || user.uid;

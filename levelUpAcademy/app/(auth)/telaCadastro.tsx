@@ -98,13 +98,14 @@ export default function TelaCadastro() {
 
     async function registrar() {
         if (!validar()) return;
+        const emailCadastro = email.trim();
         setCarregando(true);
-        const resultado = await cadastrarUsuario(nome.trim(), email.trim(), senha);
+        const resultado = await cadastrarUsuario(nome.trim(), emailCadastro, senha);
         setCarregando(false);
 
         if (resultado.sucesso) {
-            Alert.alert('Conta criada!', 'Bem-vindo ao LevelUp Academy!', [
-                { text: 'Comecar', onPress: () => router.replace('/(tabs)/home') },
+            Alert.alert('Confirme seu e-mail', `Um e-mail de confirmacao foi enviado para: ${emailCadastro}\n\n${resultado.mensagem}`, [
+                { text: 'Ir para login', onPress: () => router.replace('/(auth)/telaLogin') },
             ]);
         } else {
             Alert.alert('Erro ao cadastrar', resultado.mensagem);

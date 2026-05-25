@@ -1,10 +1,11 @@
 import { useAuth } from '@/app/context/AuthContext';
-import { db } from '@/app/config/firebaseConfig';
+import { db } from '../config/firebase';
 import MenuInf from '@/components/Menu';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { doc, increment, runTransaction } from 'firebase/firestore';
+import { arrayUnion, doc, increment, runTransaction } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { clothingData } from '../../game_folder/src/data/clothingData';
 import conteudoStyle from '../css/conteudostyle';
 import mascara from '../css/style';
 
@@ -127,6 +128,10 @@ const MISSOES: MissaoDefinicao[] = [
     },
 ];
 
+function calcularNivelPorXp(xpTotal: number) {
+    return Math.max(1, Math.floor(xpTotal / 500) + 1);
+}
+
 function contarModulosConcluidos(dadosUsuario: any) {
     const cursosProgresso = dadosUsuario?.cursosProgresso ?? {};
     return Object.values(cursosProgresso).reduce((total: number, progresso: any) => {
@@ -209,6 +214,8 @@ export default function Missoes() {
                 const dados = snap.data();
                 if (dados?.missoesColetadas?.[missao.id]) return;
 
+                const xpAtual = typeof dados?.xpTotal === 'number' ? dados.xpTotal : 0;
+                let xpGanho = 0;
                 const updates: Record<string, unknown> = {
                     [`missoesColetadas.${missao.id}`]: true,
                     atualizadoEm: new Date().toISOString(),
@@ -216,6 +223,7 @@ export default function Missoes() {
 
                 for (const recompensa of missao.recompensas) {
                     if (recompensa.tipo === 'xp' && typeof recompensa.valor === 'number') {
+                        xpGanho += recompensa.valor;
                         updates.xpTotal = increment(recompensa.valor);
                     }
                     if (recompensa.tipo === 'moedas' && typeof recompensa.valor === 'number') {
@@ -225,8 +233,17 @@ export default function Missoes() {
                         updates[`inventory.furniture.${recompensa.valor}`] = increment(1);
                     }
                     if (recompensa.tipo === 'cosmetico' && typeof recompensa.valor === 'string') {
-                        updates[`inventory.missionClothes.${recompensa.valor}`] = true;
+                        const roupa = clothingData[recompensa.valor];
+                        if (roupa) {
+                            updates[`inventory.clothes.${roupa.slot}`] = arrayUnion(recompensa.valor);
+                        } else {
+                            updates[`inventory.missionClothes.${recompensa.valor}`] = true;
+                        }
                     }
+                }
+
+                if (xpGanho > 0) {
+                    updates.nivel = calcularNivelPorXp(xpAtual + xpGanho);
                 }
 
                 transaction.update(refUsuario, updates);

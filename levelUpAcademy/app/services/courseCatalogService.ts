@@ -13,10 +13,14 @@ import {
   runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../config/firebaseConfig";
+import { db } from "../config/firebase";
 
 function getChaveProgresso(uid: string | undefined, cursoId: string) {
   return `levelup:curso:${uid ?? "visitante"}:${cursoId}:progresso`;
+}
+
+function calcularNivelPorXp(xpTotal: number) {
+  return Math.max(1, Math.floor(xpTotal / 500) + 1);
 }
 
 export function listarCursosCatalogo(): CursoDetalhado[] {
@@ -143,6 +147,7 @@ export async function concluirModuloCursoUsuario(
     const moedasRecompensa = moduloJaConcluido
       ? 0
       : modulo.moedasRecompensa ?? 0;
+    const xpAtual = typeof dadosUsuario.xpTotal === "number" ? dadosUsuario.xpTotal : 0;
 
     const novoProgresso: ProgressoCursoUsuario = {
       cursoId: curso.id,
@@ -162,6 +167,7 @@ export async function concluirModuloCursoUsuario(
         atualizadoEm: serverTimestamp(),
       },
       ...(xpRecompensa > 0 ? { xpTotal: increment(xpRecompensa) } : {}),
+      ...(xpRecompensa > 0 ? { nivel: calcularNivelPorXp(xpAtual + xpRecompensa) } : {}),
       ...(moedasRecompensa > 0 ? { moedas: increment(moedasRecompensa) } : {}),
       ...(!cursoJaConcluido && cursoConcluidoAgora
         ? { cursosCompletos: increment(1) }

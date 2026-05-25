@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { arrayUnion, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../config/firebaseConfig';
+import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import mascara from '../css/style';
+import { enviarCopiaAvaliacao } from '../services/emailService';
 import { settingsStyles } from './styles';
 
 export default function Avaliacao() {
@@ -35,9 +36,28 @@ export default function Avaliacao() {
           criadoEm: new Date().toISOString(),
         }),
       });
+      let emailEnviado = false;
+      if (user.email) {
+        try {
+          await enviarCopiaAvaliacao({
+            email: user.email,
+            nome: user.displayName,
+            nota,
+            comentario: comentario.trim(),
+          });
+          emailEnviado = true;
+        } catch (emailError) {
+          console.warn('Nao foi possivel enfileirar e-mail de avaliacao:', emailError);
+        }
+      }
       setNota(0);
       setComentario('');
-      Alert.alert('Obrigado!', 'Sua avaliacao foi salva no seu perfil.');
+      Alert.alert(
+        'Obrigado!',
+        emailEnviado
+          ? 'Sua avaliacao foi salva e enviamos uma copia para seu e-mail.'
+          : 'Sua avaliacao foi salva. Nao foi possivel enfileirar o e-mail de copia agora.'
+      );
     } catch (error: any) {
       const mensagemErro = error?.code === 'permission-denied'
         ? 'O Firestore bloqueou a gravacao. Verifique as regras da colecao usuarios.'

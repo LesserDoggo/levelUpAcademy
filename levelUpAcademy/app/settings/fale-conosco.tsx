@@ -2,9 +2,10 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { arrayUnion, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../config/firebaseConfig';
+import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import mascara from '../css/style';
+import { criarChamadoSuporte } from '../services/supportService';
 import { settingsStyles } from './styles';
 
 export default function FaleConosco() {
@@ -26,22 +27,30 @@ export default function FaleConosco() {
 
     try {
       setCarregando(true);
+      const textoMensagem = mensagem.trim();
+      const chamadoId = await criarChamadoSuporte({
+        uid: user.uid,
+        nome: user.displayName ?? 'Usuario',
+        email: user.email ?? '',
+        mensagem: textoMensagem,
+      });
+
       await updateDoc(doc(db, 'usuarios', user.uid), {
         solicitacoesSuporte: arrayUnion({
-          id: `${Date.now()}`,
+          id: chamadoId,
           uid: user.uid,
           email: user.email ?? null,
-          mensagem: mensagem.trim(),
+          mensagem: textoMensagem,
           status: 'novo',
           criadoEm: new Date().toISOString(),
         }),
       });
 
-      Alert.alert('Enviado', 'Sua mensagem foi salva no seu perfil e pode ser consultada no Firestore em usuarios/{uid}.');
+      Alert.alert('Enviado', 'Seu chamado foi aberto. Acompanhe as respostas em Meus Chamados no perfil.');
       setMensagem('');
     } catch (error: any) {
       const mensagemErro = error?.code === 'permission-denied'
-        ? 'O Firestore bloqueou a gravação. Verifique as regras da coleção usuarios.'
+        ? 'O Firestore bloqueou a gravacao. Atualize as regras para permitir chamadosSuporte.'
         : 'Nao foi possivel enviar sua mensagem.';
       Alert.alert('Erro', mensagemErro);
     } finally {
@@ -54,7 +63,7 @@ export default function FaleConosco() {
       <ScrollView contentContainerStyle={settingsStyles.scrollContent}>
         <View style={settingsStyles.card}>
           <Text style={settingsStyles.title}>Fale Conosco</Text>
-          <Text style={settingsStyles.text}>Envie sua duvida ou problema. Nesta versao, a mensagem fica registrada no documento do seu usuario.</Text>
+          <Text style={settingsStyles.text}>Envie sua duvida ou problema. O suporte respondera pelo app em Meus Chamados.</Text>
           <TextInput
             value={mensagem}
             onChangeText={setMensagem}

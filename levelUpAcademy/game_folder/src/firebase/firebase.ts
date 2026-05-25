@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
@@ -11,6 +11,10 @@ const firebaseConfig = {
   appId: "1:1057924564707:web:10acc01126e8f3b8d767d6",
 };
 
-export const firebaseApp = initializeApp(firebaseConfig);
+const GAME_FIREBASE_APP_NAME = "levelup-game";
+
+export const firebaseApp =
+  getApps().find((app) => app.name === GAME_FIREBASE_APP_NAME) ??
+  initializeApp(firebaseConfig, GAME_FIREBASE_APP_NAME);
 export const firebaseAuth = getAuth(firebaseApp);
 export const firestoreDb = getFirestore(firebaseApp);

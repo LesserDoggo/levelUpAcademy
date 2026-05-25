@@ -1,4 +1,5 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useIsFocused } from "@react-navigation/native";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -6,7 +7,7 @@ import { WebView, WebViewMessageEvent } from "react-native-webview";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { GAME_ASSETS } from "@/constants/gameAssetMap";
 import { GAME_HTML } from "@/constants/gameBundleHtml";
-import { db } from "../config/firebaseConfig";
+import { db } from "../config/firebase";
 import { useAuth } from "../context/AuthContext";
 
 type GameMessage =
@@ -17,6 +18,35 @@ type GameMessage =
   | { type: "ROOM_ITEMS_CHANGED"; roomItems: unknown }
   | { type: "GAME_EVENT"; event: string; payload?: unknown }
   | { type: "ERROR"; message: string };
+
+type DirectPhaserGame = {
+  destroy: (removeCanvas: boolean, noReturn?: boolean) => void;
+  scale?: { refresh: () => void };
+  canvas?: HTMLCanvasElement;
+};
+
+function formatGameEventPayload(payload: unknown) {
+  if (!payload) return "";
+  try {
+    return ` ${JSON.stringify(payload)}`;
+  } catch {
+    return ` ${String(payload)}`;
+  }
+}
+
+function getRenderDiagnosticSummary(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "render-diagnostics";
+  const data = payload as {
+    renderer?: string;
+    objects?: number;
+    canvas?: { cssWidth?: number; cssHeight?: number };
+    parent?: { cssWidth?: number; cssHeight?: number };
+  };
+
+  const canvas = data.canvas ? `${data.canvas.cssWidth ?? 0}x${data.canvas.cssHeight ?? 0}` : "?x?";
+  const parent = data.parent ? `${data.parent.cssWidth ?? 0}x${data.parent.cssHeight ?? 0}` : "?x?";
+  return `render ${data.renderer ?? "?"} canvas ${canvas} parent ${parent} objs ${data.objects ?? 0}`;
+}
 
 function getGameUrl() {
   const extraUrl = Constants.expoConfig?.extra?.gameUrl as string | undefined;
@@ -39,11 +69,15 @@ const LOADING_STEPS = [
 
 export default function GameScreen() {
   const webViewRef = useRef<WebView>(null);
-  const directGameContainerRef = useRef<View>(null);
-  const directGameRef = useRef<{ destroy: (removeCanvas: boolean, noReturn?: boolean) => void } | null>(null);
+  const directContainerRef = useRef<HTMLElement | null>(null);
+  const directGameRef = useRef<DirectPhaserGame | null>(null);
+  const directMountingRef = useRef(false);
+  const directMountTokenRef = useRef(0);
+  const directRetryRef = useRef<number | null>(null);
   const handleGameMessageRef = useRef<(rawData: string) => Promise<void> | void>(() => {});
   const sessionSyncedRef = useRef(false);
   const startedAtRef = useRef(Date.now());
+  const isFocused = useIsFocused();
   const { width } = useWindowDimensions();
   const { user, dadosUsuario, recarregarDados } = useAuth();
   const [ready, setReady] = useState(false);
@@ -55,6 +89,7 @@ export default function GameScreen() {
   const gameUrl = useMemo(() => getGameUrl(), []);
   const webViewSource = useMemo(() => (gameUrl ? { uri: gameUrl } : { html: GAME_HTML, baseUrl: "" }), [gameUrl]);
   const shouldRenderDirectWeb = Platform.OS === "web";
+  const [directContainerKey, setDirectContainerKey] = useState(0);
 
   const addLoadingDetail = useCallback((detail: string) => {
     setLoadingDetails((current) => [detail, ...current].slice(0, 5));
@@ -169,8 +204,14 @@ export default function GameScreen() {
         }
 
         if (message.type === "GAME_EVENT") {
-          setLastEvent(message.event);
-          addLoadingDetail(`Evento Phaser: ${message.event}.`);
+          const payload = formatGameEventPayload(message.payload);
+          addLoadingDetail(`Evento Phaser: ${message.event}.${payload}`);
+          if (message.event === "render-diagnostics") {
+            setLastEvent(getRenderDiagnosticSummary(message.payload));
+            console.info("Diagnostico Phaser:", message.payload);
+          } else {
+            setLastEvent(message.event);
+          }
           return;
         }
 
@@ -200,9 +241,75 @@ export default function GameScreen() {
     handleGameMessageRef.current = handleGameMessage;
   }, [handleGameMessage]);
 
-  useEffect(() => {
+  const clearDirectRetry = useCallback(() => {
+    if (typeof window === "undefined" || directRetryRef.current === null) return;
+    window.clearTimeout(directRetryRef.current);
+    directRetryRef.current = null;
+  }, []);
+
+  const getDirectWebContainer = useCallback(() => {
+    if (directContainerRef.current?.isConnected) return directContainerRef.current;
+
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>("[data-levelup-game-host='true']"));
+    return candidates.find((candidate) => {
+      if (!candidate.isConnected) return false;
+      const bounds = candidate.getBoundingClientRect();
+      return bounds.width >= 80 && bounds.height >= 80;
+    }) ?? null;
+  }, []);
+
+  const destroyDirectWebGame = useCallback(() => {
+    directMountTokenRef.current += 1;
+    clearDirectRetry();
+    try {
+      directGameRef.current?.destroy(true);
+    } catch (error) {
+      console.warn("Erro ao destruir Phaser web:", error);
+    }
+    directGameRef.current = null;
+    directMountingRef.current = false;
+    sessionSyncedRef.current = false;
+    if (typeof window !== "undefined") {
+      delete window.LevelUpGameBridge;
+      delete window.LevelUpGameAssets;
+    }
+  }, [clearDirectRetry]);
+
+  const resetLoadingState = useCallback(() => {
+    startedAtRef.current = Date.now();
+    setReady(false);
+    setElapsedSeconds(0);
+    setLoadingStepIndex(0);
+    setLastEvent("Carregando jogo...");
+  }, []);
+
+  const mountDirectWebGame = useCallback(async (attempt = 0) => {
     if (!shouldRenderDirectWeb || typeof window === "undefined") return;
-    if (directGameRef.current) return;
+    if (directMountingRef.current || directGameRef.current) return;
+
+    const container = getDirectWebContainer();
+    if (!container) {
+      if (attempt < 40) {
+        clearDirectRetry();
+        directRetryRef.current = window.setTimeout(() => mountDirectWebGame(attempt + 1), 50);
+      } else {
+        addLoadingDetail("Container do jogo nao apareceu para montar o Phaser.");
+      }
+      return;
+    }
+
+    const bounds = container.getBoundingClientRect();
+    if ((bounds.width < 80 || bounds.height < 80) && attempt < 40) {
+      clearDirectRetry();
+      directRetryRef.current = window.setTimeout(() => mountDirectWebGame(attempt + 1), 50);
+      return;
+    }
+
+    directMountingRef.current = true;
+    const token = directMountTokenRef.current + 1;
+    directMountTokenRef.current = token;
+    container.replaceChildren();
+    resetLoadingState();
 
     window.LevelUpGameBridge = {
       postMessage: (message: string) => {
@@ -211,29 +318,74 @@ export default function GameScreen() {
     };
     window.LevelUpGameAssets = GAME_ASSETS;
 
-    const mount = async () => {
-      try {
-        const container = document.getElementById("levelup-direct-phaser-game");
-        if (!container) return;
-        const { createLevelUpGame } = await import("../../game_folder/src/createPhaserGame");
-        directGameRef.current = createLevelUpGame(container);
-        addLoadingDetail("Phaser montado diretamente no DOM web.");
-      } catch (error) {
-        setLastEvent("Erro ao abrir Phaser web");
-        addLoadingDetail(`Erro no Phaser direto: ${String(error)}`);
-        console.warn("Erro ao montar Phaser direto:", error);
+    try {
+      const { createLevelUpGame } = await import("../../game_folder/src/createPhaserGame");
+      if (directMountTokenRef.current !== token || !container.isConnected) return;
+
+      const game = createLevelUpGame(container);
+      if (directMountTokenRef.current !== token || !container.isConnected) {
+        game.destroy(true);
+        return;
       }
-    };
 
-    mount();
+      directGameRef.current = game;
+      window.requestAnimationFrame(() => {
+        if (game.canvas) {
+          game.canvas.style.display = "block";
+          game.canvas.style.width = "100%";
+          game.canvas.style.height = "100%";
+        }
+        game.scale?.refresh();
+      });
+      addLoadingDetail("Phaser web montado diretamente no DOM.");
+    } catch (error) {
+      setLastEvent("Erro ao abrir Phaser web");
+      addLoadingDetail(`Erro no Phaser direto: ${String(error)}`);
+      console.warn("Erro ao montar Phaser direto:", error);
+    } finally {
+      directMountingRef.current = false;
+    }
+  }, [addLoadingDetail, clearDirectRetry, getDirectWebContainer, resetLoadingState, shouldRenderDirectWeb]);
 
+  const reloadGame = useCallback(() => {
+    resetLoadingState();
+    addLoadingDetail("Recarregando jogo manualmente.");
+
+    if (shouldRenderDirectWeb) {
+      destroyDirectWebGame();
+      directContainerRef.current = null;
+      setDirectContainerKey((current) => current + 1);
+      return;
+    }
+
+    sessionSyncedRef.current = false;
+    webViewRef.current?.reload();
+  }, [addLoadingDetail, destroyDirectWebGame, resetLoadingState, shouldRenderDirectWeb]);
+
+  useEffect(() => {
+    if (!shouldRenderDirectWeb) return;
+    if (isFocused) {
+      destroyDirectWebGame();
+      setDirectContainerKey((current) => current + 1);
+      return;
+    }
+    destroyDirectWebGame();
+  }, [destroyDirectWebGame, isFocused, shouldRenderDirectWeb]);
+
+  useEffect(() => {
+    if (!shouldRenderDirectWeb || !isFocused) return;
+    const timer = window.setTimeout(() => {
+      mountDirectWebGame();
+    }, 50);
+
+    return () => window.clearTimeout(timer);
+  }, [directContainerKey, isFocused, mountDirectWebGame, shouldRenderDirectWeb]);
+
+  useEffect(() => {
     return () => {
-      directGameRef.current?.destroy(true);
-      directGameRef.current = null;
-      delete window.LevelUpGameBridge;
-      delete window.LevelUpGameAssets;
+      if (shouldRenderDirectWeb) destroyDirectWebGame();
     };
-  }, [addLoadingDetail, shouldRenderDirectWeb]);
+  }, [destroyDirectWebGame, shouldRenderDirectWeb]);
 
   return (
     <View style={styles.screen}>
@@ -248,7 +400,7 @@ export default function GameScreen() {
             <MaterialCommunityIcons name="star-four-points-circle" size={18} color="#f4c95d" />
             <Text style={styles.coinText}>{dadosUsuario?.moedas ?? 0}</Text>
           </View>
-          <Pressable style={styles.iconButton} onPress={() => sendToGame({ type: "SYNC_COINS", coins: dadosUsuario?.moedas ?? 0 })}>
+          <Pressable style={styles.iconButton} onPress={reloadGame}>
             <MaterialCommunityIcons name="sync" size={20} color="#fff" />
           </Pressable>
         </View>
@@ -256,11 +408,15 @@ export default function GameScreen() {
 
       <View style={styles.webViewShell}>
         {shouldRenderDirectWeb ? (
-          <View
-            ref={directGameContainerRef}
-            nativeID="levelup-direct-phaser-game"
-            style={styles.directGameContainer}
-          />
+          React.createElement("div", {
+            key: directContainerKey,
+            ref: (node: HTMLElement | null) => {
+              directContainerRef.current = node;
+            },
+            "data-levelup-game-host": "true",
+            id: `levelup-direct-phaser-game-${directContainerKey}`,
+            style: styles.directGameHost,
+          })
         ) : (
           <WebView
             ref={webViewRef}
@@ -367,6 +523,7 @@ const styles = StyleSheet.create({
   },
   webViewShell: {
     flex: 1,
+    position: "relative",
     overflow: "hidden",
     borderRadius: 8,
     borderWidth: 1,
@@ -378,7 +535,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#1c202c",
   },
   directGameContainer: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    minWidth: 1,
+    minHeight: 1,
+    backgroundColor: "#1c202c",
+  },
+  directGameHost: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    minWidth: 1,
+    minHeight: 1,
+    overflow: "hidden",
     backgroundColor: "#1c202c",
   },
   loadingOverlay: {

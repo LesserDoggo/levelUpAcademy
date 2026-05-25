@@ -14,6 +14,7 @@ import {
     EmailAuthProvider,
     reauthenticateWithCredential,
     updatePassword,
+    updateProfile,
 } from 'firebase/auth';
 import { deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
@@ -34,10 +35,10 @@ import * as ImagePicker from 'expo-image-picker';
 import conteudoStyle from '../css/conteudostyle';
 import mascara from '../css/style';
 
-import { db, storage } from '../config/firebaseConfig';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import { buscarDadosUsuario, UsuarioFirestore } from '../services/authService';
+import { isAdminEmail } from '../services/supportService';
 
 const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
@@ -47,16 +48,36 @@ function cloudinaryConfigurado() {
     return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET);
 }
 
-async function uploadFotoParaCloudinary(file: Blob, userUid: string): Promise<string> {
+function montarArquivoCloudinary(asset: ImagePicker.ImagePickerAsset, userUid: string) {
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const extensao = mimeType.split('/')[1] ?? 'jpg';
+
+    if (Platform.OS === 'web' && asset.file) {
+        return asset.file;
+    }
+
+    if (asset.base64) {
+        return `data:${mimeType};base64,${asset.base64}`;
+    }
+
+    return {
+        uri: asset.uri,
+        type: mimeType,
+        name: `${userUid}.${extensao}`,
+    };
+}
+
+async function uploadFotoParaCloudinary(asset: ImagePicker.ImagePickerAsset, userUid: string): Promise<string> {
     if (!cloudinaryConfigurado()) {
         throw new Error('cloudinary_not_configured');
     }
 
+    const uploadId = `${userUid}-${Date.now()}`;
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', montarArquivoCloudinary(asset, userUid) as unknown as Blob);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET as string);
     formData.append('folder', CLOUDINARY_FOLDER);
-    formData.append('public_id', userUid);
+    formData.append('public_id', uploadId);
 
     const response = await fetch(
         `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
@@ -144,9 +165,13 @@ export default function Perfil() {
         if (!usuario || !user) return;
         setSalvando(true);
         try {
+            const nome = nomeEdit.trim();
+            const bio = bioEdit.trim();
+
+            await updateProfile(user, { displayName: nome });
             await updateDoc(doc(db, 'usuarios', user.uid), {
-                nome: nomeEdit.trim(),
-                bio: bioEdit.trim(),
+                nome,
+                bio,
                 notificacoes: {
                     canal: canalNotificacao,
                     frequencia: frequenciaNotificacao,
@@ -156,8 +181,8 @@ export default function Perfil() {
             });
             setUsuario({
                 ...usuario,
-                nome: nomeEdit.trim(),
-                bio: bioEdit.trim(),
+                nome,
+                bio,
                 notificacoes: {
                     canal: canalNotificacao,
                     frequencia: frequenciaNotificacao,
@@ -194,36 +219,9 @@ export default function Perfil() {
             const asset = resultado.assets[0];
 
             setSalvando(true);
-            if (asset.base64 && asset.base64.length < 950000) {
-                const contentType = asset.mimeType ?? 'image/jpeg';
-                const fotoUrl = `data:${contentType};base64,${asset.base64}`;
-                await updateDoc(doc(db, 'usuarios', user.uid), { fotoUrl, atualizadoEm: serverTimestamp() });
-                setUsuario((atual) => (atual ? { ...atual, fotoUrl } : atual));
-                await recarregarDados();
-                Alert.alert('Sucesso', 'Foto de perfil atualizada.');
-                return;
-            }
+            const fotoUrl = await uploadFotoParaCloudinary(asset, user.uid);
 
-            let arquivoParaUpload: Blob;
-
-            if (Platform.OS === 'web' && asset.file) {
-                arquivoParaUpload = asset.file as unknown as Blob;
-            } else {
-                const response = await fetch(asset.uri);
-                arquivoParaUpload = await response.blob();
-            }
-
-            let fotoUrl: string;
-            if (cloudinaryConfigurado()) {
-                fotoUrl = await uploadFotoParaCloudinary(arquivoParaUpload, user.uid);
-            } else {
-                const fotoRef = ref(storage, `fotosPerfil/${user.uid}.jpg`);
-                await uploadBytes(fotoRef, arquivoParaUpload, {
-                    contentType: asset.mimeType ?? 'image/jpeg',
-                });
-                fotoUrl = await getDownloadURL(fotoRef);
-            }
-
+            await updateProfile(user, { photoURL: fotoUrl });
             await updateDoc(doc(db, 'usuarios', user.uid), { fotoUrl, atualizadoEm: serverTimestamp() });
 
             setUsuario((atual) => (atual ? { ...atual, fotoUrl } : atual));
@@ -576,6 +574,18 @@ export default function Perfil() {
                         <Text style={conteudoStyle.textoBotaoAcao}>Fale Conosco</Text>
                     </Pressable>
 
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/meus-chamados')}>
+                        <MaterialCommunityIcons name="ticket-confirmation-outline" size={20} color="#a855f7" />
+                        <Text style={conteudoStyle.textoBotaoAcao}>Meus Chamados</Text>
+                    </Pressable>
+
+                    {isAdminEmail(user?.email) ? (
+                        <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/suporte-admin')}>
+                            <MaterialCommunityIcons name="shield-crown-outline" size={20} color="#47d18c" />
+                            <Text style={conteudoStyle.textoBotaoAcao}>Painel de Suporte</Text>
+                        </Pressable>
+                    ) : null}
+
                     <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/sobre')}>
                         <MaterialCommunityIcons name="information-outline" size={20} color="#a855f7" />
                         <Text style={conteudoStyle.textoBotaoAcao}>Sobre o Aplicativo</Text>
@@ -584,6 +594,11 @@ export default function Perfil() {
                     <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/avaliacao')}>
                         <MaterialCommunityIcons name="star-outline" size={20} color="#a855f7" />
                         <Text style={conteudoStyle.textoBotaoAcao}>Avaliar o App</Text>
+                    </Pressable>
+
+                    <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/estatisticas')}>
+                        <MaterialCommunityIcons name="chart-box-outline" size={20} color="#a855f7" />
+                        <Text style={conteudoStyle.textoBotaoAcao}>Estatisticas da Conta</Text>
                     </Pressable>
 
                     <Pressable style={[conteudoStyle.botaoAcao, { borderColor: '#ff6b35' }]} onPress={handleLogout}>

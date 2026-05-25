@@ -12,7 +12,12 @@
       "android": {
         "buildType": "apk"
       },
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "df96xyjjn",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "foto_perfil",
+        "EXPO_PUBLIC_CLOUDINARY_FOLDER": "fotosPerfil"
+      }
     },
     "production": {
       "autoIncrement": true

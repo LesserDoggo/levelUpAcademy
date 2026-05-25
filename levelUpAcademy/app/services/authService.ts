@@ -1,9 +1,12 @@
 import { Platform } from "react-native";
 import {
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
   getRedirectResult,
   GoogleAuthProvider,
+  sendEmailVerification,
   sendPasswordResetEmail,
+  setPersistence,
   signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -19,7 +22,8 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { auth, db } from "../config/firebaseConfig";
+import { auth, db } from "../config/firebase";
+import type { ProgressoCursoUsuario } from "@/types/course";
 
 export interface UsuarioFirestore {
   uid: string;
@@ -37,6 +41,23 @@ export interface UsuarioFirestore {
     frequencia: "diaria" | "semanal" | "mensal";
     habilitado: boolean;
   };
+  emailVerificado?: boolean;
+  cursosProgresso?: Record<string, ProgressoCursoUsuario>;
+  avaliacoesApp?: {
+    id: string;
+    uid: string;
+    nota: number;
+    comentario: string;
+    criadoEm: string;
+  }[];
+  solicitacoesSuporte?: {
+    id: string;
+    uid: string;
+    email: string | null;
+    mensagem: string;
+    status: string;
+    criadoEm: string;
+  }[];
   criadoEm: unknown;
   ultimoLogin: unknown;
 }
@@ -59,6 +80,11 @@ function validarSenhaForte(senha: string): string | null {
 
 function esperar(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function garantirPersistenciaAuth() {
+  if (Platform.OS !== "web") return;
+  await setPersistence(auth, browserLocalPersistence);
 }
 
 function ehErroPermissaoFirestore(error: unknown) {
@@ -110,6 +136,7 @@ function montarDadosIniciaisUsuario(
     cursosCompletos: 0,
     bio: "",
     fotoUrl: user.photoURL ?? null,
+    emailVerificado: user.emailVerified,
     notificacoes: {
       canal: "email",
       frequencia: "semanal",
@@ -130,15 +157,24 @@ async function sincronizarUsuarioFirestore(user: User) {
   }
 
   const dadosAtuais = snap.data() as Partial<UsuarioFirestore>;
+  const atualizacoes: Partial<UsuarioFirestore> & {
+    atualizadoEm?: unknown;
+    ultimoLogin: unknown;
+  } = {
+    email: user.email ?? dadosAtuais.email ?? "",
+    emailVerificado: user.emailVerified,
+    ultimoLogin: serverTimestamp(),
+  };
 
-  await executarComRetryFirestore(() =>
-    updateDoc(ref, {
-      nome: user.displayName ?? dadosAtuais.nome ?? "Usuario",
-      email: user.email ?? dadosAtuais.email ?? "",
-      fotoUrl: user.photoURL ?? dadosAtuais.fotoUrl ?? null,
-      ultimoLogin: serverTimestamp(),
-    }),
-  );
+  if (!dadosAtuais.nome && user.displayName) {
+    atualizacoes.nome = user.displayName;
+  }
+
+  if (!dadosAtuais.fotoUrl && user.photoURL) {
+    atualizacoes.fotoUrl = user.photoURL;
+  }
+
+  await executarComRetryFirestore(() => updateDoc(ref, atualizacoes));
 }
 
 export async function cadastrarUsuario(
@@ -155,17 +191,17 @@ export async function cadastrarUsuario(
       };
     }
 
+    await garantirPersistenciaAuth();
     const credencial = await createUserWithEmailAndPassword(auth, email, senha);
     const user = credencial.user;
 
     await updateProfile(user, { displayName: nome });
-    await executarComRetryFirestore(() =>
-      setDoc(doc(db, "usuarios", user.uid), montarDadosIniciaisUsuario(user, nome)),
-    );
+    await sendEmailVerification(user);
+    await signOut(auth);
 
     return {
       sucesso: true,
-      mensagem: "Conta criada com sucesso!",
+      mensagem: "Enviamos um e-mail de confirmacao. Clique no link recebido para ativar sua conta e depois faca login.",
       usuario: user,
     };
   } catch (error: unknown) {
@@ -178,8 +214,18 @@ export async function logarUsuario(
   senha: string,
 ): Promise<ResultadoAuth> {
   try {
+    await garantirPersistenciaAuth();
     const credencial = await signInWithEmailAndPassword(auth, email, senha);
     const user = credencial.user;
+
+    if (!user.emailVerified) {
+      await sendEmailVerification(user);
+      await signOut(auth);
+      return {
+        sucesso: false,
+        mensagem: "Confirme seu e-mail antes de entrar. Reenviamos o link de confirmacao para sua caixa de entrada.",
+      };
+    }
 
     await sincronizarUsuarioFirestore(user);
 
@@ -202,6 +248,7 @@ export async function logarComGoogle(idToken?: string): Promise<ResultadoAuth> {
       const resultado = await signInWithCredential(auth, credential);
       user = resultado.user;
     } else if (Platform.OS === "web") {
+      await garantirPersistenciaAuth();
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       const resultado = await signInWithPopup(auth, provider);
@@ -234,6 +281,7 @@ export async function iniciarLoginComGoogleWeb(): Promise<ResultadoAuth | null> 
   provider.setCustomParameters({ prompt: "select_account" });
 
   try {
+    await garantirPersistenciaAuth();
     const resultado = await signInWithPopup(auth, provider);
     await sincronizarUsuarioFirestore(resultado.user);
 

@@ -16,7 +16,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { db } from "../config/firebaseConfig";
+import { db } from "../config/firebase";
 import { buscarCursoCatalogo, buscarModuloCatalogo } from "./courseCatalogService";
 
 // --------------------------------------------------------------------------
