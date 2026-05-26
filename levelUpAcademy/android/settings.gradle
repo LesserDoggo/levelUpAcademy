@@ -37,22 +37,4 @@ expoAutolinking.useExpoVersionCatalog()
 
 include ':app'
 
-def reactNativeAndroidProjects = [
-  'react-native-async-storage_async-storage': '../node_modules/@react-native-async-storage/async-storage/android',
-  'react-native-google-signin_google-signin': '../node_modules/@react-native-google-signin/google-signin/android',
-  'lottie-react-native': '../node_modules/lottie-react-native/android',
-  'react-native-gesture-handler': '../node_modules/react-native-gesture-handler/android',
-  'react-native-reanimated': '../node_modules/react-native-reanimated/android',
-  'react-native-safe-area-context': '../node_modules/react-native-safe-area-context/android',
-  'react-native-screens': '../node_modules/react-native-screens/android',
-  'react-native-svg': '../node_modules/react-native-svg/android',
-  'react-native-webview': '../node_modules/react-native-webview/android',
-  'react-native-worklets': '../node_modules/react-native-worklets/android',
-]
-
-reactNativeAndroidProjects.each { projectName, projectPath ->
-  include ":${projectName}"
-  project(":${projectName}").projectDir = new File(rootDir, projectPath)
-}
-
 includeBuild(expoAutolinking.reactNativeGradlePlugin)

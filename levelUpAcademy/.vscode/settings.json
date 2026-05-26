@@ -4,10 +4,15 @@
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
   },
-  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "java.import.gradle.enabled": false,
+  "java.autobuild.enabled": false,
+  "java.import.gradle.java.home": "C:\\Program Files\\Java\\jdk-21.0.10",
+  "java.jdt.ls.java.home": "C:\\Program Files\\Java\\jdk-21.0.10",
   "java.compile.nullAnalysis.mode": "automatic",
   "java.import.exclusions": [
     "**/node_modules/**",
+    "**/node_modules/@react-native/gradle-plugin/**",
     "**/.expo/**",
     "**/android/.gradle/**",
     "**/android/build/**",
@@ -15,6 +20,7 @@
   ],
   "java.project.resourceFilters": [
     "node_modules",
+    "node_modules/@react-native/gradle-plugin",
     ".expo",
     "android/.gradle",
     "android/build",
@@ -22,6 +28,7 @@
   ],
   "files.watcherExclude": {
     "**/node_modules/**": true,
+    "**/node_modules/@react-native/gradle-plugin/**": true,
     "**/.expo/**": true,
     "**/android/.gradle/**": true,
     "**/android/build/**": true,

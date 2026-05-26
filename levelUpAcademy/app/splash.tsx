@@ -1,5 +1,5 @@
+import SplashLogo from '@/components/SplashLogo';
 import { useRouter } from 'expo-router';
-import LottieView from "lottie-react-native";
 import { useEffect } from 'react';
 import { Image, View } from 'react-native';
 import { useAuth } from './context/AuthContext';
@@ -34,12 +34,9 @@ export default function Splash() {
                 style={mascara.imgFundo}
             />
             <View style={{ alignItems: "center", alignContent: 'center', justifyContent: 'center', flex: 1 }}>
-                <LottieView
-                    source={require("../assets/images/logoPHolder.json")}
-                    autoPlay
-                    loop={true}
-                    style={mascara.logo}
-                />
+                <View style={mascara.logoFrame}>
+                    <SplashLogo />
+                </View>
             </View>
         </View>
     )

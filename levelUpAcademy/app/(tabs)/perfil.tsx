@@ -56,7 +56,7 @@ function montarArquivoCloudinary(asset: ImagePicker.ImagePickerAsset, userUid: s
         return asset.file;
     }
 
-    if (asset.base64) {
+    if (Platform.OS === 'web' && asset.base64) {
         return `data:${mimeType};base64,${asset.base64}`;
     }
 
@@ -74,7 +74,7 @@ async function uploadFotoParaCloudinary(asset: ImagePicker.ImagePickerAsset, use
 
     const uploadId = `${userUid}-${Date.now()}`;
     const formData = new FormData();
-    formData.append('file', montarArquivoCloudinary(asset, userUid) as unknown as Blob);
+    formData.append('file', montarArquivoCloudinary(asset, userUid) as unknown as string | Blob);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET as string);
     formData.append('folder', CLOUDINARY_FOLDER);
     formData.append('public_id', uploadId);
@@ -213,7 +213,7 @@ export default function Perfil() {
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true,
                 quality: 0.35,
-                base64: true,
+                base64: Platform.OS === 'web',
             });
             if (resultado.canceled || !resultado.assets[0]?.uri) return;
             const asset = resultado.assets[0];
@@ -232,8 +232,8 @@ export default function Perfil() {
             const mensagem = erro?.message?.includes('cloudinary_not_configured')
                 ? 'Cloudinary não configurado. Preencha EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME e EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.'
                 : erro?.message?.includes('permission')
-                    ? 'Sem permissão para upload. Verifique as regras do Firebase Storage.'
-                    : 'Não foi possível enviar a foto de perfil.';
+                    ? 'Sem permissão para enviar a imagem. Verifique a permissão da galeria e o upload preset do Cloudinary.'
+                    : `Não foi possível enviar a foto de perfil.${erro?.message ? ` ${erro.message}` : ''}`;
             Alert.alert('Erro', mensagem);
         } finally {
             setSalvando(false);

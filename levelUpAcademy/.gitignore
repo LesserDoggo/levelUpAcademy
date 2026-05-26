@@ -14,9 +14,15 @@ game_folder/dist/
 
 # Native build outputs
 android/.gradle/
+android/.gradle
+android/.kotlin/
+android/.kotlin
 android/app/.cxx/
+android/app/.cxx
 android/app/build/
+android/app/build
 android/build/
+android/build
 ios/Pods/
 ios/build/
 

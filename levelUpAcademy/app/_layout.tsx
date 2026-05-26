@@ -27,7 +27,11 @@ function AuthGuard() {
     // Não age enquanto Firebase ainda verifica a sessão
     if (carregando) return;
 
-    const emRotaAuth = segments[0] === '(auth)';
+    const rotaInicial = segments[0];
+    const emRotaAuth = rotaInicial === '(auth)';
+    const emSplash = rotaInicial === 'splash' || rotaInicial === undefined;
+
+    if (emSplash) return;
 
     if (!user && !emRotaAuth) {
       router.replace('/(auth)/telaLogin');

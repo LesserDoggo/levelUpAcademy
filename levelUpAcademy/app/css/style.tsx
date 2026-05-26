@@ -21,13 +21,13 @@ const mascara = StyleSheet.create({
     textAlign: 'center',
     color: '#bfc0d1',
   },
-  logo: {
-    width: 300,
-    height: 300,
+  logoFrame: {
+    width: 400,
+    height: 400,
+    maxWidth: '92%',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'transparent',
-    resizeMode: 'contain',
-    alignSelf: 'center',
-    marginVertical: 5,
   },
   inputTexto: {
     borderWidth: 1,

@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router';
-import { makeRedirectUri } from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -26,16 +25,9 @@ export default function TelaLogin() {
         Constants.expoConfig?.extra?.googleWebClientId ??
         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ??
         '1057924564707-7iuconbv347v9e518u228pubg0nep6pb.apps.googleusercontent.com';
-
-    const iosClientId =
-        Constants.expoConfig?.extra?.googleIosClientId ??
-        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ??
-        '1057924564707-nhf5ij99euca0fjf95j08ajpubhirk95.apps.googleusercontent.com';
-
     const androidClientId =
         Constants.expoConfig?.extra?.googleAndroidClientId ??
-        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ??
-        '1057924564707-nhf5ij99euca0fjf95j08ajpubhirk95.apps.googleusercontent.com';
+        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 
     const router = useRouter();
     const { login, loginComGoogle } = useAuth();
@@ -49,23 +41,19 @@ export default function TelaLogin() {
     const [erroSenha, setErroSenha] = useState('');
     const [erroAuth, setErroAuth] = useState('');
 
-    const redirectUri = makeRedirectUri({
-        scheme: 'levelupacademy',
-        path: 'redirect',
-    });
-
-    const [, response, promptAsync] = Google.useAuthRequest({
-        webClientId,
-        iosClientId,
-        androidClientId,
-        redirectUri,
-        responseType: 'id_token',
-        scopes: ['profile', 'email'],
-    });
-
     useEffect(() => {
         Animated.timing(fadeAnim, { toValue: 1, duration: 750, useNativeDriver: true }).start();
     }, [fadeAnim]);
+
+    useEffect(() => {
+        if (Platform.OS === 'web' || !webClientId) return;
+
+        GoogleSignin.configure({
+            webClientId,
+            offlineAccess: false,
+            profileImageSize: 120,
+        });
+    }, [webClientId]);
 
     function exibirErro(titulo: string, mensagem: string) {
         setErroAuth(mensagem);
@@ -107,40 +95,6 @@ export default function TelaLogin() {
 
         processarRedirectGoogleWeb();
     }, [router]);
-
-    useEffect(() => {
-        async function processarGoogleResponse() {
-            if (Platform.OS === 'web') return;
-            if (response && response.type !== 'success') {
-                setCarregandoGoogle(false);
-                return;
-            }
-            if (response?.type !== 'success') return;
-
-            try {
-                setCarregandoGoogle(true);
-                setErroAuth('');
-
-                const idToken =
-                    response.authentication?.idToken ??
-                    (typeof response.params?.id_token === 'string' ? response.params.id_token : undefined);
-
-                const resultado = await loginComGoogle(idToken);
-                if (!resultado.sucesso) {
-                    exibirErro('Erro', resultado.mensagem);
-                    return;
-                }
-
-                router.replace('/(tabs)/home');
-            } catch (erro: any) {
-                exibirErro('Erro', erro?.message ?? 'Nao foi possivel entrar com Google.');
-            } finally {
-                setCarregandoGoogle(false);
-            }
-        }
-
-        processarGoogleResponse();
-    }, [response, loginComGoogle, router]);
 
     function validar(): boolean {
         let ok = true;
@@ -200,16 +154,55 @@ export default function TelaLogin() {
                 return;
             }
 
-            const resultadoPrompt = await promptAsync();
-            if (resultadoPrompt.type !== 'success') {
-                setCarregandoGoogle(false);
+            if (Platform.OS === 'android' && androidClientId === webClientId) {
+                console.warn(
+                    'Google Sign-In: googleAndroidClientId esta igual ao webClientId. ' +
+                    'Use o OAuth Client ID Android correto no Google/Firebase e mantenha webClientId como tipo Web.'
+                );
             }
+
+            await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+            const resultadoGoogle = await GoogleSignin.signIn();
+
+            if (resultadoGoogle.type !== 'success') {
+                return;
+            }
+
+            const idToken = resultadoGoogle.data.idToken;
+            if (!idToken) {
+                exibirErro('Erro', 'Token do Google nao recebido no dispositivo. Confira o Web Client ID do Firebase.');
+                return;
+            }
+
+            const resultado = await loginComGoogle(idToken);
+            if (!resultado.sucesso) {
+                exibirErro('Erro', resultado.mensagem);
+                return;
+            }
+
+            router.replace('/(tabs)/home');
         } catch (erro: any) {
-            exibirErro('Erro', erro?.message ?? 'Nao foi possivel entrar com Google.');
-        } finally {
-            if (Platform.OS === 'web') {
-                setCarregandoGoogle(false);
+            if (erro?.code === statusCodes.SIGN_IN_CANCELLED) {
+                return;
             }
+
+            if (erro?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                exibirErro('Google Play Services', 'Atualize ou habilite o Google Play Services para entrar com Google.');
+                return;
+            }
+
+            const mensagem = String(erro?.message ?? '');
+            if (mensagem.includes('DEVELOPER_ERROR') || erro?.code === '10') {
+                exibirErro(
+                    'Google Android mal configurado',
+                    'DEVELOPER_ERROR geralmente indica SHA-1/package name divergente no OAuth Android. Confira se o pacote com.lucas.levelupacademy e a SHA-1 da keystore desta build estao cadastrados no Firebase/Google Cloud, e use o Web Client ID no app.'
+                );
+                return;
+            }
+
+            exibirErro('Erro', mensagem || 'Nao foi possivel entrar com Google.');
+        } finally {
+            setCarregandoGoogle(false);
         }
     }
 

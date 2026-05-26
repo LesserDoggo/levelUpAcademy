@@ -23,8 +23,16 @@ expo-env.d.ts
 
 # Android
 android/app/build/
+android/app/build
+android/app/.cxx/
+android/app/.cxx
 android/.gradle/
-android/local.properties/
+android/.gradle
+android/.kotlin/
+android/.kotlin
+android/build/
+android/build
+android/local.properties
 
 # iOS
 ios/Pods/

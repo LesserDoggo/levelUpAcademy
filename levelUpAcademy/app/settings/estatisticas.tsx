@@ -76,11 +76,17 @@ function sanitizarPdf(valor: string) {
   return valor
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[()\\]/g, "")
-    .replace(/[^\x20-\x7E]/g, "");
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
 }
 
-function quebrarLinhaPdf(texto: string, limite = 92) {
+function textoPdf(valor: string) {
+  return sanitizarPdf(valor);
+}
+
+function quebrarLinhaPdf(texto: string, limite = 74) {
   const palavras = sanitizarPdf(texto).split(/\s+/);
   const linhas: string[] = [];
   let atual = "";
@@ -109,64 +115,157 @@ function gerarPdfRelatorio(params: {
   cursosCompletos: number;
   linhas: LinhaConsulta[];
 }) {
-  const linhasRelatorio: string[] = [
-    "RELATORIO DA CONTA - LEVELUP ACADEMY",
-    `Gerado em: ${new Date().toLocaleString("pt-BR")}`,
-    `Filtros aplicados: ${params.filtros}`,
-    "",
-    "1. INDICADORES PRINCIPAIS",
-    ...params.kpis.map((kpi) => `- ${kpi.label}: ${kpi.value}`),
-    "",
-    "2. GRAFICOS E CONSOLIDADOS",
-    `- Progresso geral medio: ${Math.round(params.mediaProgresso * 100)}%`,
-    `- Media das avaliacoes: ${params.mediaAvaliacoes.toFixed(1)} / 5`,
-    `- Chamados em aberto: ${params.chamadosAbertos}`,
-    `- Cursos concluidos: ${params.cursosCompletos}`,
-    "",
-    "3. CURSOS POR PROGRESSO",
-    ...params.cursos.map((item) =>
-      `- ${item.curso.titulo}: ${Math.round(item.percentual * 100)}% | ${item.concluidos}/${item.totalModulos} modulos | ${item.concluido ? "Concluido" : item.concluidos > 0 ? "Em andamento" : "Nao iniciado"} | Atualizado em ${formatarData(item.atualizadoEm)}`
-    ),
-    "",
-    "4. CONSULTAS FILTRADAS",
-    ...(params.linhas.length
-      ? params.linhas.flatMap((linha) => [
-          `- ${linha.data} | ${linha.tipo.toUpperCase()} | ${linha.status}`,
-          `  Titulo: ${linha.titulo}`,
-          `  Categoria/E-mail: ${linha.categoria}`,
-          `  Valor: ${linha.valor}`,
-        ])
-      : ["Nenhum resultado encontrado para os filtros atuais."]),
-  ].flatMap((linha) => quebrarLinhaPdf(linha));
+  const larguraPagina = 595;
+  const alturaPagina = 842;
+  const margem = 40;
+  const fontRef = 3;
+  const boldFontRef = 4;
+  const paginas: string[] = [];
+  let comandos: string[] = [];
+  let y = 0;
 
-  const linhasPorPagina = 50;
-  const paginas = Array.from({ length: Math.ceil(linhasRelatorio.length / linhasPorPagina) }, (_, index) =>
-    linhasRelatorio.slice(index * linhasPorPagina, (index + 1) * linhasPorPagina)
-  );
+  const cores = {
+    fundo: [0.047, 0.063, 0.11],
+    painel: [0.129, 0.149, 0.212],
+    painelEscuro: [0.102, 0.122, 0.18],
+    borda: [0.18, 0.208, 0.302],
+    roxo: [0.376, 0.318, 0.608],
+    roxoClaro: [0.514, 0.435, 0.82],
+    verde: [0.278, 0.82, 0.549],
+    texto: [1, 1, 1],
+    textoSuave: [0.749, 0.753, 0.82],
+    textoFraco: [0.612, 0.639, 0.686],
+  };
+
+  function rgb(cor: number[]) {
+    return cor.map((canal) => canal.toFixed(3)).join(" ");
+  }
+
+  function rect(x: number, yRect: number, w: number, h: number, fill: number[], stroke?: number[]) {
+    comandos.push(`q ${rgb(fill)} rg ${x} ${yRect} ${w} ${h} re f Q`);
+    if (stroke) {
+      comandos.push(`q ${rgb(stroke)} RG ${x} ${yRect} ${w} ${h} re S Q`);
+    }
+  }
+
+  function linha(x1: number, y1: number, x2: number, y2: number, cor: number[]) {
+    comandos.push(`q ${rgb(cor)} RG ${x1} ${y1} m ${x2} ${y2} l S Q`);
+  }
+
+  function text(valor: string, x: number, yText: number, tamanho = 10, cor = cores.textoSuave, bold = false) {
+    comandos.push(`BT /${bold ? "F2" : "F1"} ${tamanho} Tf ${rgb(cor)} rg ${x} ${yText} Td (${textoPdf(valor)}) Tj ET`);
+  }
+
+  function novaPagina() {
+    if (comandos.length) {
+      paginas.push(comandos.join("\n"));
+    }
+    comandos = [];
+    rect(0, 0, larguraPagina, alturaPagina, cores.fundo);
+    rect(0, 742, larguraPagina, 100, cores.painelEscuro);
+    rect(40, 760, 515, 52, cores.painel, cores.borda);
+    text("LevelUp", 58, 792, 20, cores.texto, true);
+    text("Academy", 138, 792, 20, cores.roxoClaro, true);
+    text("Relatorio da Conta", 58, 772, 12, cores.textoSuave);
+    text(`Gerado em ${new Date().toLocaleString("pt-BR")}`, 390, 790, 9, cores.textoFraco);
+    y = 710;
+  }
+
+  function garantirEspaco(altura: number) {
+    if (y - altura < 42) novaPagina();
+  }
+
+  function tituloSecao(titulo: string) {
+    garantirEspaco(32);
+    text(titulo, margem, y, 14, cores.texto, true);
+    linha(margem, y - 8, 555, y - 8, cores.borda);
+    y -= 28;
+  }
+
+  function blocoKpi(x: number, label: string, value: string | number) {
+    rect(x, y - 72, 118, 72, cores.painel, cores.borda);
+    text(String(value), x + 14, y - 30, 22, cores.texto, true);
+    text(label, x + 14, y - 54, 9, cores.textoSuave);
+  }
+
+  novaPagina();
+
+  text("Filtros aplicados", margem, y, 11, cores.texto, true);
+  quebrarLinhaPdf(params.filtros, 82).forEach((linhaFiltro, index) => {
+    text(linhaFiltro, margem, y - 18 - index * 13, 9, cores.textoFraco);
+  });
+  y -= 56;
+
+  tituloSecao("Indicadores principais");
+  params.kpis.slice(0, 4).forEach((kpi, index) => blocoKpi(margem + index * 130, kpi.label, kpi.value));
+  y -= 96;
+
+  tituloSecao("Graficos e consolidados");
+  rect(margem, y - 104, 250, 104, cores.painel, cores.borda);
+  text("Progresso geral medio", margem + 14, y - 24, 12, cores.texto, true);
+  rect(margem + 14, y - 58, 196, 12, cores.painelEscuro, cores.borda);
+  rect(margem + 14, y - 58, Math.max(6, 196 * Math.max(0, Math.min(1, params.mediaProgresso))), 12, cores.verde);
+  text(`${Math.round(params.mediaProgresso * 100)}%`, margem + 222, y - 58, 16, cores.verde, true);
+  text("Media dos cursos disponiveis", margem + 14, y - 82, 9, cores.textoFraco);
+
+  rect(312, y - 104, 243, 104, cores.painel, cores.borda);
+  text("Resumo de feedback", 326, y - 24, 12, cores.texto, true);
+  text(`Media das avaliacoes: ${params.mediaAvaliacoes.toFixed(1)} / 5`, 326, y - 48, 10, cores.textoSuave);
+  text(`Chamados em aberto: ${params.chamadosAbertos}`, 326, y - 66, 10, cores.textoSuave);
+  text(`Cursos concluidos: ${params.cursosCompletos}`, 326, y - 84, 10, cores.textoSuave);
+  y -= 128;
+
+  tituloSecao("Cursos por progresso");
+  params.cursos.forEach((item) => {
+    garantirEspaco(58);
+    const percentual = Math.round(item.percentual * 100);
+    const status = item.concluido ? "Concluido" : item.concluidos > 0 ? "Em andamento" : "Nao iniciado";
+    rect(margem, y - 46, 515, 46, cores.painel, cores.borda);
+    text(item.curso.titulo.slice(0, 68), margem + 12, y - 16, 10, cores.texto, true);
+    text(`${status} | ${item.concluidos}/${item.totalModulos} modulos | Atualizado em ${formatarData(item.atualizadoEm)}`, margem + 12, y - 33, 8, cores.textoFraco);
+    rect(430, y - 28, 86, 8, cores.painelEscuro, cores.borda);
+    rect(430, y - 28, Math.max(4, 86 * item.percentual), 8, cores.verde);
+    text(`${percentual}%`, 522, y - 30, 9, cores.verde, true);
+    y -= 54;
+  });
+
+  tituloSecao("Consultas filtradas");
+  if (!params.linhas.length) {
+    rect(margem, y - 38, 515, 38, cores.painel, cores.borda);
+    text("Nenhum resultado encontrado para os filtros atuais.", margem + 12, y - 23, 10, cores.textoSuave);
+    y -= 50;
+  } else {
+    params.linhas.forEach((linhaConsulta) => {
+      const titulo = quebrarLinhaPdf(linhaConsulta.titulo, 74).slice(0, 2);
+      garantirEspaco(52 + titulo.length * 10);
+      const altura = 40 + titulo.length * 10;
+      rect(margem, y - altura, 515, altura, cores.painel, cores.borda);
+      text(`${linhaConsulta.data} | ${linhaConsulta.tipo.toUpperCase()} | ${linhaConsulta.status}`, margem + 12, y - 16, 8, cores.verde, true);
+      titulo.forEach((linhaTitulo, index) => text(linhaTitulo, margem + 12, y - 32 - index * 11, 10, cores.texto));
+      text(`${linhaConsulta.categoria} | ${linhaConsulta.valor}`.slice(0, 92), margem + 12, y - altura + 12, 8, cores.textoFraco);
+      y -= altura + 8;
+    });
+  }
+
+  paginas.push(comandos.join("\n"));
 
   const objetos: string[] = [];
   const paginaRefs: number[] = [];
   const catalogRef = 1;
   const pagesRef = 2;
-  const fontRef = 3;
-  let proximoRef = 4;
+  let proximoRef = 5;
 
   objetos[catalogRef] = `1 0 obj\n<< /Type /Catalog /Pages ${pagesRef} 0 R >>\nendobj\n`;
   objetos[fontRef] = `${fontRef} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
+  objetos[boldFontRef] = `${boldFontRef} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n`;
 
-  paginas.forEach((pagina) => {
+  paginas.forEach((stream) => {
     const pageRef = proximoRef;
     const contentRef = proximoRef + 1;
     proximoRef += 2;
     paginaRefs.push(pageRef);
-
-    const comandos = pagina
-      .map((linha) => `(${sanitizarPdf(linha).slice(0, 110)}) Tj T*`)
-      .join("\n");
-    const stream = `BT /F1 10 Tf 40 800 Td 14 TL\n${comandos}\nET`;
-
     objetos[pageRef] =
-      `${pageRef} 0 obj\n<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontRef} 0 R >> >> /Contents ${contentRef} 0 R >>\nendobj\n`;
+      `${pageRef} 0 obj\n<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 ${larguraPagina} ${alturaPagina}] /Resources << /Font << /F1 ${fontRef} 0 R /F2 ${boldFontRef} 0 R >> >> /Contents ${contentRef} 0 R >>\nendobj\n`;
     objetos[contentRef] =
       `${contentRef} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`;
   });
