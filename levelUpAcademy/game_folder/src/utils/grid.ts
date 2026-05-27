@@ -6,6 +6,13 @@ export const TILE_WIDTH = 68;
 export const TILE_HEIGHT = 54;
 export const ROOM_ORIGIN_X = 72;
 export const ROOM_ORIGIN_Y = 118;
+export const PLAYER_SPAWN_POSITION: GridPosition = { x: 6, y: 6 };
+export const PLAYER_SPAWN_RESERVED_AREA = {
+  x: PLAYER_SPAWN_POSITION.x - 1,
+  y: PLAYER_SPAWN_POSITION.y - 1,
+  width: 3,
+  height: 2,
+};
 
 export function gridToWorld(grid: GridPosition) {
   return {
@@ -32,4 +39,13 @@ export function isInsideRoom(position: GridPosition, width = 1, height = 1) {
 
 export function gridKey(position: GridPosition) {
   return `${position.x}:${position.y}`;
+}
+
+export function isInsidePlayerSpawnArea(position: GridPosition, width = 1, height = 1) {
+  return !(
+    position.x + width <= PLAYER_SPAWN_RESERVED_AREA.x ||
+    position.x >= PLAYER_SPAWN_RESERVED_AREA.x + PLAYER_SPAWN_RESERVED_AREA.width ||
+    position.y + height <= PLAYER_SPAWN_RESERVED_AREA.y ||
+    position.y >= PLAYER_SPAWN_RESERVED_AREA.y + PLAYER_SPAWN_RESERVED_AREA.height
+  );
 }

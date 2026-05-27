@@ -1,6 +1,6 @@
 import { furnitureData } from "../data/furnitureData";
 import type { GridPosition, RoomFurnitureItem } from "../types/FurnitureTypes";
-import { gridKey, isInsideRoom } from "./grid";
+import { gridKey, isInsidePlayerSpawnArea, isInsideRoom } from "./grid";
 
 export function occupiedCells(items: RoomFurnitureItem[], ignoredId?: string) {
   const cells = new Set<string>();
@@ -23,6 +23,7 @@ export function occupiedCells(items: RoomFurnitureItem[], ignoredId?: string) {
 export function canPlaceItem(itemId: string, position: GridPosition, items: RoomFurnitureItem[], ignoredId?: string) {
   const definition = furnitureData[itemId];
   if (!definition || !isInsideRoom(position, definition.width, definition.height)) return false;
+  if (isInsidePlayerSpawnArea(position, definition.collision.width, definition.collision.height)) return false;
 
   const occupied = occupiedCells(items, ignoredId);
   for (let y = position.y; y < position.y + definition.collision.height; y += 1) {

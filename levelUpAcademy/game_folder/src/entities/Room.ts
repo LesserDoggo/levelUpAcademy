@@ -1,5 +1,12 @@
 import Phaser from "phaser";
-import { GRID_COLUMNS, GRID_ROWS, gridToWorld, TILE_HEIGHT, TILE_WIDTH } from "../utils/grid";
+import {
+  GRID_COLUMNS,
+  GRID_ROWS,
+  PLAYER_SPAWN_RESERVED_AREA,
+  gridToWorld,
+  TILE_HEIGHT,
+  TILE_WIDTH,
+} from "../utils/grid";
 
 export class Room extends Phaser.GameObjects.Container {
   constructor(scene: Phaser.Scene) {
@@ -19,6 +26,13 @@ export class Room extends Phaser.GameObjects.Container {
     const roomHeight = GRID_ROWS * TILE_HEIGHT;
 
     graphics.fillRect(roomX, roomY, roomWidth, roomHeight);
+    graphics.fillStyle(0xf0dfb7, 1);
+    graphics.fillRect(
+      roomX + PLAYER_SPAWN_RESERVED_AREA.x * TILE_WIDTH,
+      roomY + PLAYER_SPAWN_RESERVED_AREA.y * TILE_HEIGHT,
+      PLAYER_SPAWN_RESERVED_AREA.width * TILE_WIDTH,
+      PLAYER_SPAWN_RESERVED_AREA.height * TILE_HEIGHT
+    );
 
     for (let x = 0; x <= GRID_COLUMNS; x += 1) {
       graphics.lineBetween(roomX + x * TILE_WIDTH, roomY, roomX + x * TILE_WIDTH, roomY + roomHeight);

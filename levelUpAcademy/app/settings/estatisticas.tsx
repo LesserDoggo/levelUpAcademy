@@ -1,5 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -57,19 +59,47 @@ function formatarData(dataIso: string | undefined) {
   return data.toLocaleDateString("pt-BR");
 }
 
-function baixarArquivo(nome: string, conteudo: BlobPart, tipo: string) {
-  if (Platform.OS !== "web") {
-    Alert.alert("Exportacao", "A exportacao de arquivos esta disponivel na versao web.");
-    return;
-  }
+async function baixarArquivo(nome: string, conteudo: BlobPart, tipo: string) {
+  try {
+    if (Platform.OS !== "web") {
+      if (typeof conteudo !== "string") {
+        Alert.alert("Exportacao", "Este formato ainda esta disponivel apenas na versao web.");
+        return;
+      }
 
-  const blob = new Blob([conteudo], { type: tipo });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = nome;
-  link.click();
-  URL.revokeObjectURL(url);
+      const diretorio = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      if (!diretorio) {
+        Alert.alert("Exportacao", "Nao foi possivel acessar o armazenamento do dispositivo.");
+        return;
+      }
+
+      const arquivoUri = `${diretorio}${nome}`;
+      await FileSystem.writeAsStringAsync(arquivoUri, conteudo);
+
+      const podeCompartilhar = await Sharing.isAvailableAsync();
+      if (!podeCompartilhar) {
+        Alert.alert("Exportacao concluida", `Arquivo salvo em: ${arquivoUri}`);
+        return;
+      }
+
+      await Sharing.shareAsync(arquivoUri, {
+        mimeType: tipo,
+        UTI: tipo === "application/pdf" ? "com.adobe.pdf" : undefined,
+        dialogTitle: "Exportar relatorio",
+      });
+      return;
+    }
+
+    const blob = new Blob([conteudo], { type: tipo });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = nome;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (erro: any) {
+    Alert.alert("Exportacao", erro?.message ?? "Nao foi possivel exportar o arquivo.");
+  }
 }
 
 function sanitizarPdf(valor: string) {
@@ -491,11 +521,11 @@ export default function EstatisticasConta() {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(consultasSheet), "Consultas");
 
     const conteudo = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-    baixarArquivo("relatorio-conta.xlsx", conteudo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    void baixarArquivo("relatorio-conta.xlsx", conteudo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   }
 
   function exportarPdf() {
-    baixarArquivo(
+    void baixarArquivo(
       "relatorio-conta.pdf",
       gerarPdfRelatorio({
         filtros: filtrosTexto,

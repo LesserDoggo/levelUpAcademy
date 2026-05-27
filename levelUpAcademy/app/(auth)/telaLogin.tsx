@@ -195,7 +195,7 @@ export default function TelaLogin() {
             if (mensagem.includes('DEVELOPER_ERROR') || erro?.code === '10') {
                 exibirErro(
                     'Google Android mal configurado',
-                    'DEVELOPER_ERROR geralmente indica SHA-1/package name divergente no OAuth Android. Confira se o pacote com.lucas.levelupacademy e a SHA-1 da keystore desta build estao cadastrados no Firebase/Google Cloud, e use o Web Client ID no app.'
+                    'DEVELOPER_ERROR geralmente indica SHA-1/package name divergente no OAuth Android. Confira se o pacote com.lucas.levelupacademy e a SHA-1 da keystore desta build estao cadastrados no Firebase/Google Cloud. O app deve continuar usando o Web Client ID no codigo.'
                 );
                 return;
             }
