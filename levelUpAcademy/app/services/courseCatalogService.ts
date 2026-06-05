@@ -23,6 +23,19 @@ function calcularNivelPorXp(xpTotal: number) {
   return Math.max(1, Math.floor(xpTotal / 500) + 1);
 }
 
+function formatarDiaOfensiva(data = new Date()) {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+function getDiaAnterior(data = new Date()) {
+  const diaAnterior = new Date(data);
+  diaAnterior.setDate(diaAnterior.getDate() - 1);
+  return formatarDiaOfensiva(diaAnterior);
+}
+
 export function listarCursosCatalogo(): CursoDetalhado[] {
   return cursosCatalogo;
 }
@@ -141,13 +154,23 @@ export async function concluirModuloCursoUsuario(
       : [...modulosAtuais, modulo.id];
     const porcentagem =
       totalModulos === 0 ? 0 : modulosConcluidos.length / totalModulos;
-    const cursoJaConcluido = Boolean(progressoAtual?.concluido);
     const cursoConcluidoAgora = porcentagem >= 1;
     const xpRecompensa = moduloJaConcluido ? 0 : modulo.xpRecompensa;
     const moedasRecompensa = moduloJaConcluido
       ? 0
       : modulo.moedasRecompensa ?? 0;
     const xpAtual = typeof dadosUsuario.xpTotal === "number" ? dadosUsuario.xpTotal : 0;
+    const hojeOfensiva = formatarDiaOfensiva();
+    const ontemOfensiva = getDiaAnterior();
+    const ultimaOfensiva = dadosUsuario.ultimaOfensivaEm as string | undefined;
+    const diasOfensivaAtual =
+      typeof dadosUsuario.diasOfensiva === "number" ? dadosUsuario.diasOfensiva : 0;
+    const diasOfensiva =
+      !moduloJaConcluido && ultimaOfensiva !== hojeOfensiva
+        ? ultimaOfensiva === ontemOfensiva
+          ? diasOfensivaAtual + 1
+          : 1
+        : diasOfensivaAtual;
 
     const novoProgresso: ProgressoCursoUsuario = {
       cursoId: curso.id,
@@ -160,6 +183,13 @@ export async function concluirModuloCursoUsuario(
       concluido: cursoConcluidoAgora,
       atualizadoEm: new Date().toISOString(),
     };
+    const cursosProgresso = {
+      ...(dadosUsuario.cursosProgresso ?? {}),
+      [curso.id]: novoProgresso,
+    };
+    const cursosCompletos = Object.values(cursosProgresso).filter(
+      (progresso) => Boolean((progresso as ProgressoCursoUsuario).concluido),
+    ).length;
 
     transaction.update(usuarioRef, {
       [`cursosProgresso.${curso.id}`]: {
@@ -169,8 +199,9 @@ export async function concluirModuloCursoUsuario(
       ...(xpRecompensa > 0 ? { xpTotal: increment(xpRecompensa) } : {}),
       ...(xpRecompensa > 0 ? { nivel: calcularNivelPorXp(xpAtual + xpRecompensa) } : {}),
       ...(moedasRecompensa > 0 ? { moedas: increment(moedasRecompensa) } : {}),
-      ...(!cursoJaConcluido && cursoConcluidoAgora
-        ? { cursosCompletos: increment(1) }
+      cursosCompletos,
+      ...(!moduloJaConcluido
+        ? { diasOfensiva, ultimaOfensivaEm: hojeOfensiva }
         : {}),
       atualizadoEm: serverTimestamp(),
     });

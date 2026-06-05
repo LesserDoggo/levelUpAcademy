@@ -168,7 +168,13 @@ function VideoBlock({ parte }: { parte: Extract<ParteConteudo, { tipo: "video" }
   );
 }
 
-function QuizQuestion({ questao }: { questao: QuestaoQuiz }) {
+function QuizQuestion({
+  questao,
+  onAnswered,
+}: {
+  questao: QuestaoQuiz;
+  onAnswered?: (questaoId: string) => void;
+}) {
   const [respostaSelecionada, setRespostaSelecionada] = useState<number | null>(null);
   const respondeu = respostaSelecionada !== null;
   const acertou = respostaSelecionada === questao.respostaCorretaIndex;
@@ -191,7 +197,10 @@ function QuizQuestion({ questao }: { questao: QuestaoQuiz }) {
               conteudoStyle.quizOptionCorrect,
               selecionada && !acertou && conteudoStyle.quizOptionWrong,
             ]}
-            onPress={() => setRespostaSelecionada(index)}
+            onPress={() => {
+              setRespostaSelecionada(index);
+              onAnswered?.(questao.id);
+            }}
           >
             <Text style={conteudoStyle.quizOptionText}>{opcao}</Text>
           </Pressable>
@@ -208,7 +217,13 @@ function QuizQuestion({ questao }: { questao: QuestaoQuiz }) {
   );
 }
 
-function QuizBlock({ parte }: { parte: Extract<ParteConteudo, { tipo: "quiz" }> }) {
+function QuizBlock({
+  parte,
+  onQuizQuestionAnswered,
+}: {
+  parte: Extract<ParteConteudo, { tipo: "quiz" }>;
+  onQuizQuestionAnswered?: (questaoId: string) => void;
+}) {
   return (
     <View style={conteudoStyle.lessonBlock}>
       <Text style={conteudoStyle.lessonBlockTitle}>{parte.titulo}</Text>
@@ -217,15 +232,25 @@ function QuizBlock({ parte }: { parte: Extract<ParteConteudo, { tipo: "quiz" }> 
       ) : null}
 
       {parte.questoes.map((questao) => (
-        <QuizQuestion key={questao.id} questao={questao} />
+        <QuizQuestion
+          key={questao.id}
+          questao={questao}
+          onAnswered={(questaoId) => onQuizQuestionAnswered?.(`${parte.id}:${questaoId}`)}
+        />
       ))}
     </View>
   );
 }
 
-export default function LessonContentRenderer({ parte }: { parte: ParteConteudo }) {
+export default function LessonContentRenderer({
+  parte,
+  onQuizQuestionAnswered,
+}: {
+  parte: ParteConteudo;
+  onQuizQuestionAnswered?: (questaoId: string) => void;
+}) {
   if (parte.tipo === "texto_imagem") return <TextoImagemBlock parte={parte} />;
   if (parte.tipo === "conteudo_misto") return <ConteudoMistoBlock parte={parte} />;
   if (parte.tipo === "video") return <VideoBlock parte={parte} />;
-  return <QuizBlock parte={parte} />;
+  return <QuizBlock parte={parte} onQuizQuestionAnswered={onQuizQuestionAnswered} />;
 }

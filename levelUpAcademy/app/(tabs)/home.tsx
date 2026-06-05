@@ -57,6 +57,7 @@ export default function Home() {
   }
 
   const nomeExibido = dadosUsuario?.nome ?? 'Aventureiro';
+  const porcentagemCurso = Math.max(0, Math.min(1, progresso?.porcentagem ?? 0));
 
   return (
     <View style={[
@@ -116,7 +117,7 @@ export default function Home() {
         {/* ── SAUDAÇÃO ────────────────────────────────────────────────── */}
         <View style={{ paddingHorizontal: 20, marginTop: isDesktop ? 80 : 130 }}>
           <Text style={[conteudoStyle.titulo, { marginBottom: 4 }]}>
-            Olá, {nomeExibido}! 👋
+            Olá, {nomeExibido}!
           </Text>
         </View>
 
@@ -136,12 +137,12 @@ export default function Home() {
               <View
                 style={[
                   conteudoStyle.barraPreenchida,
-                  { width: `${progresso.porcentagem * 100}%`, backgroundColor: getCorBarra(progresso.porcentagem) },
+                  { width: `${porcentagemCurso * 100}%`, backgroundColor: getCorBarra(porcentagemCurso) },
                 ]}
               />
             </View>
             <Text style={conteudoStyle.textoPorcentagem}>
-              {Math.round(progresso.porcentagem * 100)}% concluído
+              {Math.round(porcentagemCurso * 100)}% concluído
             </Text>
 
             <Pressable
@@ -173,7 +174,8 @@ export default function Home() {
               alignSelf: 'center',
               justifyContent: isDesktop ? 'space-between' : 'center',
               marginTop: 16,
-              marginHorizontal: 20,
+              width: '80%',
+              maxWidth: 600,
               gap: 12,
             },
           ]}>

@@ -33,6 +33,7 @@ export interface UsuarioFirestore {
   xpTotal: number;
   moedas: number;
   diasOfensiva: number;
+  ultimaOfensivaEm?: string;
   cursosCompletos: number;
   bio: string;
   fotoUrl: string | null;

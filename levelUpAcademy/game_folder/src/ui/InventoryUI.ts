@@ -1,6 +1,13 @@
 import Phaser from "phaser";
 import { furnitureData } from "../data/furnitureData";
 import { useGameStore } from "../store/gameStore";
+import { createReadableText } from "./coinIcon";
+
+function formatInventoryLabel(name: string, quantity: number) {
+  const words = name.split(" ");
+  if (name.length <= 12 || words.length === 1) return `${name}\nx${quantity}`;
+  return `${words[0]}\n${words.slice(1).join(" ")}\nx${quantity}`;
+}
 
 export class InventoryUI {
   private container?: Phaser.GameObjects.Container;
@@ -15,12 +22,11 @@ export class InventoryUI {
 
   render(scene: Phaser.Scene, onSelectFurniture: (itemId: string) => void) {
     this.container?.removeAll(true);
-    const panel = scene.add.rectangle(0, 0, 360, 134, 0xffffff, 0.94).setOrigin(0).setStrokeStyle(1, 0xd6dce5);
-    const title = scene.add.text(12, 10, "Inventario", {
-      color: "#243447",
-      fontFamily: "Arial",
+    const panel = scene.add.rectangle(0, 0, 472, 136, 0x212636, 0.98).setOrigin(0).setStrokeStyle(1, 0x60519b);
+    const title = createReadableText(scene, 12, 9, "Inventario", {
+      color: "#bfc0d1",
       fontSize: "16px",
-      fontStyle: "bold",
+      fontStyle: "800",
     });
     this.container?.add([panel, title]);
     this.enableDrag(scene, panel);
@@ -32,14 +38,13 @@ export class InventoryUI {
 
     const inventory = useGameStore.getState().inventory.furniture;
     Object.entries(furnitureData).forEach(([itemId, definition], index) => {
-      if (itemId === "bed_simple") return;
-      const x = 12 + index * 82;
-      const button = scene.add.rectangle(x, 48, 72, 58, 0xe8edf2, 1).setOrigin(0).setInteractive({ useHandCursor: true });
-      const label = scene.add.text(x + 6, 54, `${definition.name}\nx${inventory[itemId] ?? 0}`, {
-        color: "#243447",
-        fontFamily: "Arial",
-        fontSize: "11px",
-        lineSpacing: 3,
+      const x = 12 + index * 112;
+      const button = scene.add.rectangle(x, 48, 104, 64, 0x1c202c, 1).setOrigin(0).setStrokeStyle(1, 0x2e354d).setInteractive({ useHandCursor: true });
+      const label = createReadableText(scene, x + 8, 51, formatInventoryLabel(definition.name, inventory[itemId] ?? 0), {
+        color: "#bfc0d1",
+        fontSize: "12px",
+        fontStyle: "700",
+        lineSpacing: 1,
       });
       button.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
         pointer.event.stopPropagation();

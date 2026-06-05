@@ -7,6 +7,7 @@ import {
   buscarModuloCatalogo,
   buscarProgressoCursoUsuario,
   concluirModuloCursoUsuario,
+  listarModulosCurso,
 } from "@/app/services/courseCatalogService";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -31,6 +32,9 @@ export default function CourseModuleScreen() {
   const isDesktop = width > 768;
   const [salvando, setSalvando] = useState(false);
   const [moduloConcluido, setModuloConcluido] = useState(false);
+  const [questoesRespondidas, setQuestoesRespondidas] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const dadosModulo = useMemo(() => {
     if (!courseId || !moduleId) return null;
@@ -54,6 +58,10 @@ export default function CourseModuleScreen() {
       ativo = false;
     };
   }, [courseId, dadosUsuario?.uid, moduleId]);
+
+  useEffect(() => {
+    setQuestoesRespondidas(new Set());
+  }, [moduleId]);
 
   async function concluirModulo() {
     if (!dadosModulo) return;
@@ -104,6 +112,33 @@ export default function CourseModuleScreen() {
   }
 
   const { curso, modulo } = dadosModulo;
+  const modulosCurso = listarModulosCurso(curso);
+  const indiceModuloAtual = modulosCurso.findIndex((item) => item.id === modulo.id);
+  const proximoModulo = indiceModuloAtual >= 0 ? modulosCurso[indiceModuloAtual + 1] : null;
+  const questoesQuiz = modulo.partes.flatMap((parte) =>
+    parte.tipo === "quiz"
+      ? parte.questoes.map((questao) => `${parte.id}:${questao.id}`)
+      : [],
+  );
+  const quizObrigatorioRespondido =
+    questoesQuiz.length === 0 ||
+    questoesQuiz.every((questaoId) => questoesRespondidas.has(questaoId));
+  const podeConcluirModulo =
+    !salvando && !moduloConcluido && quizObrigatorioRespondido;
+
+  function irParaProximoModulo() {
+    if (!proximoModulo || !courseId) return;
+    router.push(`/course/${courseId}/module/${proximoModulo.id}`);
+  }
+
+  function registrarQuestaoRespondida(questaoId: string) {
+    setQuestoesRespondidas((atuais) => {
+      if (atuais.has(questaoId)) return atuais;
+      const proximas = new Set(atuais);
+      proximas.add(questaoId);
+      return proximas;
+    });
+  }
 
   return (
     <View
@@ -147,22 +182,40 @@ export default function CourseModuleScreen() {
         </View>
 
         {modulo.partes.map((parte) => (
-          <LessonContentRenderer key={parte.id} parte={parte} />
+          <LessonContentRenderer
+            key={parte.id}
+            parte={parte}
+            onQuizQuestionAnswered={registrarQuestaoRespondida}
+          />
         ))}
 
-        <Pressable
-          style={[
-            conteudoStyle.botao,
-            { marginVertical: 20 },
-            moduloConcluido && { backgroundColor: "#35b779", borderColor: "#35b779" },
-          ]}
-          onPress={concluirModulo}
-          disabled={salvando || moduloConcluido}
-        >
-          <Text style={conteudoStyle.textoBotao}>
-            {salvando ? "Salvando..." : moduloConcluido ? "Modulo concluido" : "Concluir modulo"}
-          </Text>
-        </Pressable>
+        <View style={{ gap: 12, marginVertical: 20 }}>
+          {!quizObrigatorioRespondido ? (
+            <Text style={conteudoStyle.courseModuleMeta}>
+              Responda todos os questionarios deste modulo para concluir.
+            </Text>
+          ) : null}
+
+          <Pressable
+            style={[
+              conteudoStyle.botao,
+              moduloConcluido && { backgroundColor: "#35b779", borderColor: "#35b779" },
+              !podeConcluirModulo && !moduloConcluido && { opacity: 0.55 },
+            ]}
+            onPress={concluirModulo}
+            disabled={!podeConcluirModulo}
+          >
+            <Text style={conteudoStyle.textoBotao}>
+              {salvando ? "Salvando..." : moduloConcluido ? "Modulo concluido" : "Concluir modulo"}
+            </Text>
+          </Pressable>
+
+          {proximoModulo ? (
+            <Pressable style={conteudoStyle.botaoSecundario} onPress={irParaProximoModulo}>
+              <Text style={conteudoStyle.textoBotao}>Proximo modulo</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </ScrollView>
     </View>
   );

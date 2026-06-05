@@ -12,7 +12,7 @@ export class MovementSystem {
 
   stop(player?: Player) {
     this.target = null;
-    if (player) player.playLayered("idle", player.direction);
+    if (player) player.stop();
   }
 
   moveToPointer(player: Player, pointer: Phaser.Input.Pointer, roomItems: RoomFurnitureItem[]) {
@@ -27,14 +27,14 @@ export class MovementSystem {
 
   update(player: Player, delta: number, roomItems: RoomFurnitureItem[]) {
     if (!this.target) {
-      player.playLayered("idle", player.direction);
+      player.stop();
       return;
     }
 
     const distance = Phaser.Math.Distance.Between(player.x, player.y, this.target.x, this.target.y);
     if (distance < 3) {
       this.target = null;
-      player.playLayered("idle", player.direction);
+      player.stop();
       return;
     }
 
@@ -45,7 +45,7 @@ export class MovementSystem {
 
     if (!this.collision.canWalkTo(nextGrid, roomItems)) {
       this.target = null;
-      player.playLayered("idle", player.direction);
+      player.stop();
       return;
     }
 

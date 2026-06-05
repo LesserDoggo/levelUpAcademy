@@ -15,6 +15,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { configurarHandlerNotificacoes } from './services/notificationService';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,6 +56,7 @@ function RootLayoutNav() {
   });
 
   useEffect(() => {
+    configurarHandlerNotificacoes();
     SystemUI.setBackgroundColorAsync('transparent');
   }, []);
 

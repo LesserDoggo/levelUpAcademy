@@ -19,4 +19,12 @@ export class PlayerManager {
   updateDepth() {
     if (this.player) this.depthSystem.update(this.player);
   }
+
+  resetToSpawn() {
+    if (!this.player) return;
+    const start = gridToWorld(PLAYER_SPAWN_POSITION);
+    this.player.setPosition(start.x, start.y);
+    this.player.stop("down");
+    this.updateDepth();
+  }
 }

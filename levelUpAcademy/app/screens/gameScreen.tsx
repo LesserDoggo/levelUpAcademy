@@ -2,7 +2,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useIsFocused } from "@react-navigation/native";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Alert, LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { GAME_ASSETS } from "@/constants/gameAssetMap";
@@ -86,6 +86,8 @@ export default function GameScreen() {
   const [loadingDetails, setLoadingDetails] = useState<string[]>(["Aguardando a WebView montar."]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const isDesktop = width >= 860;
+  const shouldUseLandscapeCanvas = !isDesktop;
+  const [gameFrame, setGameFrame] = useState({ width: 0, height: 0 });
   const gameUrl = useMemo(() => getGameUrl(), []);
   const webViewSource = useMemo(() => (gameUrl ? { uri: gameUrl } : { html: GAME_HTML, baseUrl: "" }), [gameUrl]);
   const shouldRenderDirectWeb = Platform.OS === "web";
@@ -387,10 +389,34 @@ export default function GameScreen() {
     };
   }, [destroyDirectWebGame, shouldRenderDirectWeb]);
 
+  const handleGameFrameLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width: frameWidth, height: frameHeight } = event.nativeEvent.layout;
+    setGameFrame((current) => {
+      const nextWidth = Math.round(frameWidth);
+      const nextHeight = Math.round(frameHeight);
+      if (current.width === nextWidth && current.height === nextHeight) return current;
+      return { width: nextWidth, height: nextHeight };
+    });
+  }, []);
+
+  const mobileLandscapeSurfaceStyle =
+    shouldUseLandscapeCanvas && gameFrame.width > 0 && gameFrame.height > 0
+      ? {
+          position: "absolute" as const,
+          width: gameFrame.height,
+          height: gameFrame.width,
+          left: (gameFrame.width - gameFrame.height) / 2,
+          top: (gameFrame.height - gameFrame.width) / 2,
+          transform: [{ rotate: "90deg" }],
+        }
+      : null;
+
+  const gameSurfaceStyle = [styles.gameSurface, mobileLandscapeSurfaceStyle];
+
   return (
     <View style={styles.screen}>
       <View style={[styles.header, !isDesktop && styles.headerMobile, isDesktop && styles.headerDesktop]}>
-        <View>
+        <View style={styles.headerTextBlock}>
           <Text style={[styles.title, !isDesktop && styles.titleMobile]}>Quarto do Gecko</Text>
           <Text style={styles.subtitle}>{lastEvent}</Text>
         </View>
@@ -406,42 +432,44 @@ export default function GameScreen() {
         </View>
       </View>
 
-      <View style={styles.webViewShell}>
-        {shouldRenderDirectWeb ? (
-          React.createElement("div", {
-            key: directContainerKey,
-            ref: (node: HTMLElement | null) => {
-              directContainerRef.current = node;
-            },
-            "data-levelup-game-host": "true",
-            id: `levelup-direct-phaser-game-${directContainerKey}`,
-            style: styles.directGameHost,
-          })
-        ) : (
-          <WebView
-            ref={webViewRef}
-            source={webViewSource}
-            style={styles.webView}
-            originWhitelist={["*"]}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsInlineMediaPlayback
-            setSupportMultipleWindows={false}
-            onMessage={handleMessage}
-            onLoadEnd={() => {
-              addLoadingDetail(gameUrl ? `WebView carregou URL: ${gameUrl}` : "WebView carregou HTML embutido.");
-              if (!sessionSyncedRef.current) {
-                sessionSyncedRef.current = true;
-                syncSession();
-              }
-            }}
-            onError={() => {
-              setLastEvent("Nao foi possivel abrir o jogo");
-              addLoadingDetail("onError da WebView foi disparado.");
-              Alert.alert("Jogo offline", "Rode npm run build:game ou configure EXPO_PUBLIC_GAME_URL para desenvolvimento.");
-            }}
-          />
-        )}
+      <View style={styles.webViewShell} onLayout={handleGameFrameLayout}>
+        <View style={gameSurfaceStyle}>
+          {shouldRenderDirectWeb ? (
+            React.createElement("div", {
+              key: directContainerKey,
+              ref: (node: HTMLElement | null) => {
+                directContainerRef.current = node;
+              },
+              "data-levelup-game-host": "true",
+              id: `levelup-direct-phaser-game-${directContainerKey}`,
+              style: styles.directGameHost,
+            })
+          ) : (
+            <WebView
+              ref={webViewRef}
+              source={webViewSource}
+              style={styles.webView}
+              originWhitelist={["*"]}
+              javaScriptEnabled
+              domStorageEnabled
+              allowsInlineMediaPlayback
+              setSupportMultipleWindows={false}
+              onMessage={handleMessage}
+              onLoadEnd={() => {
+                addLoadingDetail(gameUrl ? `WebView carregou URL: ${gameUrl}` : "WebView carregou HTML embutido.");
+                if (!sessionSyncedRef.current) {
+                  sessionSyncedRef.current = true;
+                  syncSession();
+                }
+              }}
+              onError={() => {
+                setLastEvent("Nao foi possivel abrir o jogo");
+                addLoadingDetail("onError da WebView foi disparado.");
+                Alert.alert("Jogo offline", "Rode npm run build:game ou configure EXPO_PUBLIC_GAME_URL para desenvolvimento.");
+              }}
+            />
+          )}
+        </View>
 
         {!ready ? (
           <View pointerEvents="none" style={styles.loadingOverlay}>
@@ -480,6 +508,11 @@ const styles = StyleSheet.create({
   },
   headerMobile: {
     minHeight: 42,
+    gap: 8,
+  },
+  headerTextBlock: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   title: {
     color: "#bfc0d1",
@@ -499,6 +532,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flexShrink: 0,
   },
   coinBadge: {
     minHeight: 34,
@@ -508,6 +542,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#243447",
     borderRadius: 8,
     paddingHorizontal: 10,
+    maxWidth: 120,
   },
   coinText: {
     color: "#fff",
@@ -532,6 +567,10 @@ const styles = StyleSheet.create({
   },
   webView: {
     flex: 1,
+    backgroundColor: "#1c202c",
+  },
+  gameSurface: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "#1c202c",
   },
   directGameContainer: {

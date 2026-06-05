@@ -38,6 +38,7 @@ import mascara from '../css/style';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import { buscarDadosUsuario, UsuarioFirestore } from '../services/authService';
+import { enviarNotificacaoTesteEstudo, sincronizarNotificacoesEstudo } from '../services/notificationService';
 import { isAdminEmail } from '../services/supportService';
 
 const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
@@ -130,6 +131,10 @@ export default function Perfil() {
                 notificacoes: { canal, frequencia, habilitado },
             } : atual);
             await recarregarDados();
+            const resultadoNotificacao = await sincronizarNotificacoesEstudo({ canal, frequencia, habilitado });
+            if (resultadoNotificacao.motivo === 'permissao-negada') {
+                Alert.alert('Permissao necessaria', 'Ative as notificacoes do app para receber lembretes de estudo.');
+            }
         } catch (error) {
             console.warn('Erro ao salvar notificacoes:', error);
             Alert.alert('Erro', 'Nao foi possivel salvar as preferencias de notificacao.');
@@ -190,6 +195,14 @@ export default function Perfil() {
                 },
             });
             await recarregarDados();
+            const resultadoNotificacao = await sincronizarNotificacoesEstudo({
+                canal: canalNotificacao,
+                frequencia: frequenciaNotificacao,
+                habilitado: notificacaoAtiva,
+            });
+            if (resultadoNotificacao.motivo === 'permissao-negada') {
+                Alert.alert('Permissao necessaria', 'Ative as notificacoes do app para receber lembretes de estudo.');
+            }
             setEditando(false);
             Alert.alert('✅ Perfil atualizado com sucesso!');
         } catch {
@@ -226,7 +239,6 @@ export default function Perfil() {
 
             setUsuario((atual) => (atual ? { ...atual, fotoUrl } : atual));
             await recarregarDados();
-            Alert.alert('Sucesso', 'Foto de perfil atualizada.');
         } catch (erro: any) {
             console.warn('Erro ao enviar foto de perfil:', erro);
             const mensagem = erro?.message?.includes('cloudinary_not_configured')
@@ -380,6 +392,27 @@ export default function Perfil() {
     }
 
     // ── Loading ─────────────────────────────────────────────────────────────
+    async function handleTestarNotificacao() {
+        try {
+            const resultado = await enviarNotificacaoTesteEstudo();
+
+            if (resultado.motivo === 'web-nao-suportado') {
+                Alert.alert('Teste indisponivel', 'Teste de notificacao push funciona apenas no app instalado no celular.');
+                return;
+            }
+
+            if (resultado.motivo === 'permissao-negada') {
+                Alert.alert('Permissao necessaria', 'Ative as notificacoes do app para receber o teste.');
+                return;
+            }
+
+            Alert.alert('Teste agendado', 'A notificacao deve aparecer em alguns segundos.');
+        } catch (error) {
+            console.warn('Erro ao testar notificacao:', error);
+            Alert.alert('Erro', 'Nao foi possivel enviar a notificacao de teste.');
+        }
+    }
+
     if (carregando) {
         return (
             <View style={[mascara.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -580,10 +613,17 @@ export default function Perfil() {
                     </Pressable>
 
                     {isAdminEmail(user?.email) ? (
-                        <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/suporte-admin')}>
-                            <MaterialCommunityIcons name="shield-crown-outline" size={20} color="#47d18c" />
-                            <Text style={conteudoStyle.textoBotaoAcao}>Painel de Suporte</Text>
-                        </Pressable>
+                        <>
+                            <Pressable style={conteudoStyle.botaoAcao} onPress={handleTestarNotificacao}>
+                                <MaterialCommunityIcons name="bell-ring-outline" size={20} color="#47d18c" />
+                                <Text style={conteudoStyle.textoBotaoAcao}>Testar Notificacao</Text>
+                            </Pressable>
+
+                            <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/suporte-admin')}>
+                                <MaterialCommunityIcons name="shield-crown-outline" size={20} color="#47d18c" />
+                                <Text style={conteudoStyle.textoBotaoAcao}>Painel de Suporte</Text>
+                            </Pressable>
+                        </>
                     ) : null}
 
                     <Pressable style={conteudoStyle.botaoAcao} onPress={() => router.push('/settings/sobre')}>

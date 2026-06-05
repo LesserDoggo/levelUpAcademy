@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { clothingData } from "../data/clothingData";
-import { furnitureData } from "../data/furnitureData";
+import { FURNITURE_DIRECTIONS, furnitureData } from "../data/furnitureData";
 import { Player } from "../entities/Player";
 import { resolveAssetPath } from "../config/assetResolver";
 
@@ -17,7 +17,9 @@ export class PreloadScene extends Phaser.Scene {
     });
 
     Object.values(furnitureData).forEach((item) => {
-      this.load.image(item.spriteKey, resolveAssetPath(item.spritePath));
+      FURNITURE_DIRECTIONS.forEach((direction) => {
+        this.load.image(`${item.spriteKey}_${direction}`, resolveAssetPath(item.spritePaths[direction]));
+      });
     });
   }
 

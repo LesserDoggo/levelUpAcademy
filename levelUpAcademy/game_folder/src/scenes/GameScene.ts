@@ -10,6 +10,7 @@ import { CharacterCustomizationUI } from "../ui/CharacterCustomizationUI";
 import { InventoryUI } from "../ui/InventoryUI";
 import { PlacementUI } from "../ui/PlacementUI";
 import { ShopUI } from "../ui/ShopUI";
+import { COIN_ICON_TEXTURE, createReadableText, ensureCoinIconTexture } from "../ui/coinIcon";
 import { canPlaceItem } from "../utils/collision";
 import { listenNativeMessages, postToNative } from "../utils/webviewBridge";
 
@@ -21,6 +22,8 @@ export class GameScene extends Phaser.Scene {
   private shopUI = new ShopUI();
   private placementUI = new PlacementUI();
   private customizationUI = new CharacterCustomizationUI();
+  private coinBadge?: Phaser.GameObjects.Rectangle;
+  private coinIcon?: Phaser.GameObjects.Image;
   private coinsText?: Phaser.GameObjects.Text;
   private unsubscribeNative?: () => void;
   private activePanel: "none" | "avatar" | "inventory" | "shop" = "none";
@@ -95,6 +98,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_: number, delta: number) {
+    this.coinsText?.setText(`${useGameStore.getState().coins}`);
+
     const player = this.playerManager.player;
     if (!player) return;
     if (this.isMovementBlocked()) {
@@ -105,20 +110,21 @@ export class GameScene extends Phaser.Scene {
     this.gameManager.movement.update(player, delta, items);
     player.syncFrame();
     this.playerManager.updateDepth();
-    this.coinsText?.setText(`Moedas ${useGameStore.getState().coins}`);
   }
 
   private createHud() {
-    this.coinsText = this.add
-      .text(392, 18, `Moedas ${useGameStore.getState().coins}`, {
-        color: "#ffffff",
-        fontFamily: "Arial",
-        fontSize: "18px",
-        fontStyle: "bold",
-        backgroundColor: "#243447",
-        padding: { x: 12, y: 8 },
-      })
+    ensureCoinIconTexture(this);
+
+    this.coinBadge = this.add
+      .rectangle(808, 20, 142, 34, 0x243447, 0.96)
+      .setOrigin(0)
+      .setStrokeStyle(1, 0x60519b)
       .setDepth(9000);
+    this.coinIcon = this.add.image(825, 37, COIN_ICON_TEXTURE).setDisplaySize(20, 20).setDepth(9001);
+    this.coinsText = createReadableText(this, 846, 25, `${useGameStore.getState().coins}`, {
+      fontSize: "18px",
+      fontStyle: "800",
+    }).setDepth(9001);
 
     this.createMenuButtons();
     this.inventoryUI.create(this, (itemId) => this.startPlacement(itemId));
@@ -138,24 +144,24 @@ export class GameScene extends Phaser.Scene {
 
   private createMenuButtons() {
     const buttons: Array<{ label: string; panel: "avatar" | "inventory" | "shop"; x: number }> = [
-      { label: "Avatar", panel: "avatar", x: 392 },
-      { label: "Inventario", panel: "inventory", x: 480 },
-      { label: "Loja", panel: "shop", x: 588 },
+      { label: "Avatar", panel: "avatar", x: 18 },
+      { label: "Inventario", panel: "inventory", x: 104 },
+      { label: "Loja", panel: "shop", x: 222 },
     ];
 
     buttons.forEach((button) => {
+      const width = button.label.length > 8 ? 110 : 78;
       const background = this.add
-        .rectangle(button.x, 68, button.label.length > 6 ? 96 : 76, 32, 0x60519b, 1)
+        .rectangle(button.x, 20, width, 34, 0x243447, 0.96)
+        .setOrigin(0)
+        .setStrokeStyle(1, 0x60519b)
         .setDepth(9000)
         .setInteractive({ useHandCursor: true });
-      const label = this.add
-        .text(button.x, 68, button.label, {
-          color: "#ffffff",
-          fontFamily: "Arial",
-          fontSize: "12px",
-          fontStyle: "bold",
-        })
-        .setOrigin(0.5)
+      const label = createReadableText(this, button.x + width / 2, 28, button.label, {
+        fontSize: "14px",
+        fontStyle: "700",
+      })
+        .setOrigin(0.5, 0)
         .setDepth(9001);
       background.on("pointerdown", () => this.togglePanel(button.panel));
       label.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.togglePanel(button.panel));
@@ -231,6 +237,7 @@ export class GameScene extends Phaser.Scene {
 
   private startPlacement(itemId: string) {
     if (!this.gameManager.inventory.hasFurniture(itemId)) return;
+    this.resetPlayerForFurnitureEditing();
     useGameStore.getState().startPlacement(itemId);
     this.gameManager.placement.start(this, itemId);
     this.placementUI.setActive(true);
@@ -262,6 +269,10 @@ export class GameScene extends Phaser.Scene {
   private async buyFurniture(itemId: string) {
     const result = this.gameManager.shop.buyFurniture(itemId);
     if (!result) return;
+    const store = useGameStore.getState();
+    store.setCoins(result.coins);
+    store.setInventory(result.inventory);
+    this.coinsText?.setText(`${result.coins}`);
     await this.gameManager.firebase.saveCoins(result.coins);
     await this.gameManager.firebase.saveInventory(result.inventory);
     this.inventoryUI.render(this, (id) => this.startPlacement(id));
@@ -270,6 +281,10 @@ export class GameScene extends Phaser.Scene {
   private async buyClothing(itemId: string) {
     const result = this.gameManager.shop.buyClothing(itemId);
     if (!result) return;
+    const store = useGameStore.getState();
+    store.setCoins(result.coins);
+    store.setInventory(result.inventory);
+    this.coinsText?.setText(`${result.coins}`);
     await this.gameManager.firebase.saveCoins(result.coins);
     await this.gameManager.firebase.saveInventory(result.inventory);
   }
@@ -287,15 +302,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createFurnitureEditPanel() {
-    const panel = this.add.rectangle(0, 0, 210, 204, 0xffffff, 0.96).setOrigin(0).setStrokeStyle(1, 0xd6dce5);
-    this.editPanelTitle = this.add.text(12, 10, "Mover item", {
-      color: "#243447",
-      fontFamily: "Arial",
+    const panel = this.add.rectangle(0, 0, 222, 212, 0x212636, 0.98).setOrigin(0).setStrokeStyle(1, 0x60519b);
+    this.editPanelTitle = createReadableText(this, 12, 10, "Mover item", {
+      color: "#bfc0d1",
       fontSize: "16px",
-      fontStyle: "bold",
+      fontStyle: "700",
     });
 
-    this.editPanel = this.add.container(734, 292, [panel, this.editPanelTitle]).setDepth(9100).setVisible(false);
+    this.editPanel = this.add.container(720, 292, [panel, this.editPanelTitle]).setDepth(9100).setVisible(false);
     this.enablePanelDrag(panel, this.editPanel);
 
     const buttons = [
@@ -310,14 +324,14 @@ export class GameScene extends Phaser.Scene {
 
     buttons.forEach((button) => {
       const background = this.add
-        .rectangle(button.x, button.y, button.label.length > 5 ? 74 : 44, 28, button.danger ? 0xef626c : button.label === "Fechar" ? 0x8b95a5 : 0x4f63ac, 1)
+        .rectangle(button.x, button.y, button.label.length > 5 ? 78 : 48, 30, button.danger ? 0x7c2430 : button.label === "Fechar" ? 0x3a4258 : 0x60519b, 1)
         .setOrigin(0)
+        .setStrokeStyle(1, button.danger ? 0xef626c : 0x836fd1)
         .setInteractive({ useHandCursor: true });
-      const label = this.add.text(button.x + 8, button.y + 7, button.label, {
-        color: "#ffffff",
-        fontFamily: "Arial",
-        fontSize: "11px",
-        fontStyle: "bold",
+      const label = createReadableText(this, button.x + 8, button.y + 6, button.label, {
+        color: button.danger ? "#ffd7dc" : "#ffffff",
+        fontSize: "13px",
+        fontStyle: "700",
       });
       background.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
         pointer.event.stopPropagation();
@@ -351,11 +365,16 @@ export class GameScene extends Phaser.Scene {
 
   private selectFurniture(item: RoomFurnitureItem) {
     this.selectedFurniture = item;
-    this.gameManager.movement.stop(this.playerManager.player);
+    this.resetPlayerForFurnitureEditing();
     const definition = furnitureData[item.itemId];
     this.editPanelTitle?.setText(definition ? `Mover ${definition.name}` : "Mover item");
     this.editPanel?.setVisible(true);
     postToNative({ type: "GAME_EVENT", event: "furniture-selected", payload: { itemId: item.itemId, id: item.id } });
+  }
+
+  private resetPlayerForFurnitureEditing() {
+    this.gameManager.movement.stop(this.playerManager.player);
+    this.playerManager.resetToSpawn();
   }
 
   private hideFurnitureEditPanel() {
@@ -365,6 +384,7 @@ export class GameScene extends Phaser.Scene {
 
   private async moveSelectedFurniture(deltaX: number, deltaY: number) {
     if (!this.selectedFurniture?.id) return;
+    this.resetPlayerForFurnitureEditing();
     const store = useGameStore.getState();
     const current = store.roomItems.find((item) => item.id === this.selectedFurniture?.id);
     if (!current) return;
@@ -380,6 +400,7 @@ export class GameScene extends Phaser.Scene {
 
   private async removeSelectedFurniture() {
     if (!this.selectedFurniture?.id) return;
+    this.resetPlayerForFurnitureEditing();
     const store = useGameStore.getState();
     const current = store.roomItems.find((item) => item.id === this.selectedFurniture?.id);
     if (!current) return;
@@ -396,11 +417,13 @@ export class GameScene extends Phaser.Scene {
 
   private async rotateSelectedFurniture() {
     if (!this.selectedFurniture?.id) return;
+    this.resetPlayerForFurnitureEditing();
     const store = useGameStore.getState();
     const current = store.roomItems.find((item) => item.id === this.selectedFurniture?.id);
     if (!current) return;
 
     const next = { ...current, rotation: ((current.rotation ?? 0) + 90) % 360 };
+    if (!canPlaceItem(next.itemId, next, store.roomItems, next.id)) return;
     store.setRoomItems(store.roomItems.map((item) => (item.id === next.id ? next : item)));
     this.selectedFurniture = next;
     this.renderRoomItems();

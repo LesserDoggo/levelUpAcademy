@@ -17,8 +17,8 @@ export class Room extends Phaser.GameObjects.Container {
 
   private drawFloor(scene: Phaser.Scene) {
     const graphics = scene.add.graphics();
-    graphics.lineStyle(1, 0x243447, 0.18);
-    graphics.fillStyle(0xd9c9a5, 1);
+    graphics.lineStyle(1, 0x3d1f1a, 0.18);
+    graphics.fillStyle(0x874333, 1);
 
     const roomX = gridToWorld({ x: 0, y: 0 }).x - TILE_WIDTH / 2;
     const roomY = gridToWorld({ x: 0, y: 0 }).y - TILE_HEIGHT / 2;
@@ -26,7 +26,16 @@ export class Room extends Phaser.GameObjects.Container {
     const roomHeight = GRID_ROWS * TILE_HEIGHT;
 
     graphics.fillRect(roomX, roomY, roomWidth, roomHeight);
-    graphics.fillStyle(0xf0dfb7, 1);
+
+    for (let y = 0; y < GRID_ROWS; y += 1) {
+      for (let x = 0; x < GRID_COLUMNS; x += 1) {
+        const color = (x + y) % 2 === 0 ? 0x914a38 : 0x7b3b2e;
+        graphics.fillStyle(color, 0.22);
+        graphics.fillRect(roomX + x * TILE_WIDTH, roomY + y * TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT);
+      }
+    }
+
+    graphics.fillStyle(0x9a503d, 0.5);
     graphics.fillRect(
       roomX + PLAYER_SPAWN_RESERVED_AREA.x * TILE_WIDTH,
       roomY + PLAYER_SPAWN_RESERVED_AREA.y * TILE_HEIGHT,
@@ -41,7 +50,7 @@ export class Room extends Phaser.GameObjects.Container {
       graphics.lineBetween(roomX, roomY + y * TILE_HEIGHT, roomX + roomWidth, roomY + y * TILE_HEIGHT);
     }
 
-    graphics.lineStyle(4, 0x243447, 1);
+    graphics.lineStyle(3, 0x3d1f1a, 0.7);
     graphics.strokeRect(roomX, roomY, roomWidth, roomHeight);
     graphics.setDepth(0);
 

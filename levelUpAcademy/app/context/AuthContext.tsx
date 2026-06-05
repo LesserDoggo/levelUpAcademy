@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { auth } from '../config/firebase';
 import { buscarDadosUsuario, deslogarUsuario, logarComGoogle, logarUsuario, UsuarioFirestore } from '../services/authService';
+import { sincronizarNotificacoesEstudo } from '../services/notificationService';
 
 function usaSenhaEmail(firebaseUser: User) {
     return firebaseUser.providerData.some((provider) => provider.providerId === 'password');
@@ -163,6 +164,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             unsubscribe?.();
         };
     }, []);
+
+    useEffect(() => {
+        sincronizarNotificacoesEstudo(dadosUsuario?.notificacoes).catch((error) => {
+            console.warn('AuthContext: nao foi possivel sincronizar notificacoes:', error);
+        });
+    }, [dadosUsuario?.notificacoes]);
 
     const valorContexto = useMemo(() => ({
         user,

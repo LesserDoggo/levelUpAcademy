@@ -6,6 +6,7 @@ import type { Direction, PlayerAnimation, PlayerClothes } from "../types/PlayerT
 
 const FRAME_WIDTH = 48;
 const FRAME_HEIGHT = 64;
+const PLAYER_SCALE = 1.2;
 const DIRECTIONS: Direction[] = ["down", "left", "right", "up"];
 
 export class Player extends Phaser.GameObjects.Container {
@@ -28,7 +29,12 @@ export class Player extends Phaser.GameObjects.Container {
     this.faceAccessoryLayer = scene.add.sprite(0, 0, "empty_layer");
     this.hatLayer = scene.add.sprite(0, 0, "empty_layer");
     this.add([this.bodyLayer, this.shoesLayer, this.pantsLayer, this.shirtLayer, this.faceAccessoryLayer, this.hatLayer]);
-    this.setSize(FRAME_WIDTH, FRAME_HEIGHT);
+    for (const layer of this.layers) {
+      layer.setOrigin(0.5, 1);
+      layer.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.setSize(FRAME_WIDTH * PLAYER_SCALE, FRAME_HEIGHT * PLAYER_SCALE);
+    this.setScale(PLAYER_SCALE);
     scene.add.existing(this);
   }
 
@@ -40,6 +46,7 @@ export class Player extends Phaser.GameObjects.Container {
   setClothes(clothes: Partial<PlayerClothes>) {
     this.clothes = { ...this.clothes, ...clothes };
     this.hatLayer.setTexture(this.clothes.hat ? clothingData[this.clothes.hat].spriteKey : "empty_layer");
+    this.hatLayer.setY(this.clothes.hat === "red_hat" ? -5 : 0);
     this.faceAccessoryLayer.setTexture(
       this.clothes.faceAccessory ? clothingData[this.clothes.faceAccessory].spriteKey : "empty_layer",
     );
@@ -55,13 +62,27 @@ export class Player extends Phaser.GameObjects.Container {
     this.syncFrame();
   }
 
+  stop(direction = this.direction) {
+    this.animationName = "idle";
+    this.direction = direction;
+    this.setFrameForCurrentDirection(0);
+  }
+
   syncFrame() {
-    const directionIndex = DIRECTIONS.indexOf(this.direction);
-    const base = directionIndex * 4;
     const walkOffset = this.animationName === "walk" ? Math.floor((this.scene.time.now / 150) % 4) : 0;
-    const frame = base + walkOffset;
-    for (const layer of [this.bodyLayer, this.shoesLayer, this.pantsLayer, this.shirtLayer, this.faceAccessoryLayer, this.hatLayer]) {
+    this.setFrameForCurrentDirection(walkOffset);
+  }
+
+  private setFrameForCurrentDirection(offset: number) {
+    const directionIndex = Math.max(0, DIRECTIONS.indexOf(this.direction));
+    const base = directionIndex * 4;
+    const frame = base + offset;
+    for (const layer of this.layers) {
       layer.setFrame(frame);
     }
+  }
+
+  private get layers() {
+    return [this.bodyLayer, this.shoesLayer, this.pantsLayer, this.shirtLayer, this.faceAccessoryLayer, this.hatLayer];
   }
 }

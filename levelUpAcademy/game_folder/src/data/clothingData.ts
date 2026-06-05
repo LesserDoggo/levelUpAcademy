@@ -10,9 +10,9 @@ import type { ClothingSlot, PlayerClothes } from "../types/PlayerTypes";
 export const DEFAULT_CLOTHES: PlayerClothes = {
   hat: null,
   faceAccessory: null,
-  shirt: "hoodie_black",
-  pants: "jeans_blue",
-  shoes: "sneaker_white",
+  shirt: null,
+  pants: null,
+  shoes: null,
 };
 
 export const clothingData: Record<

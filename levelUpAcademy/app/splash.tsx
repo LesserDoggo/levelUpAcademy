@@ -16,7 +16,7 @@ export default function Splash() {
 
         async function Prepare() {
             try {
-                await new Promise(tempo => setTimeout(tempo, 4000))
+                await new Promise(tempo => setTimeout(tempo, 4300))
             } catch (e) {
                 alert(e);
             } finally {

@@ -10,11 +10,14 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:game": "npm --prefix game_folder run build && node game_folder/scripts/embed-game.mjs"
+    "build:game": "npm --prefix game_folder run build && node game_folder/scripts/embed-game.mjs",
+    "sha1:android": "powershell -ExecutionPolicy Bypass -File ./scripts/get-android-sha1.ps1",
+    "build:apk": "powershell -ExecutionPolicy Bypass -File ./scripts/build-apk-release.ps1"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@lottiefiles/dotlottie-react": "^0.13.5",
+    "@lottiefiles/dotlottie-react-native": "^0.9.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
     "@react-navigation/bottom-tabs": "^7.4.0",
@@ -33,6 +36,7 @@
     "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.12",
     "expo-navigation-bar": "~5.0.10",
+    "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.23",
     "expo-sharing": "~14.0.8",
     "expo-splash-screen": "~31.0.13",

@@ -25,7 +25,7 @@ export const useGameStore = create<GameStore>((set) => ({
   coins: 0,
   clothes: DEFAULT_CLOTHES,
   inventory: {
-    furniture: { table_wood: 1, chair_blue: 1, plant_green: 1 },
+    furniture: { table_wood: 1, chair_blue: 1, plant_green: 1, bed_simple: 0 },
     clothes: {
       shirt: ["hoodie_black"],
       pants: ["jeans_blue"],

@@ -17,7 +17,12 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
-import { buscarCursoCatalogo, buscarModuloCatalogo } from "./courseCatalogService";
+import {
+  buscarCursoCatalogo,
+  buscarModuloCatalogo,
+  calcularPorcentagemCurso,
+} from "./courseCatalogService";
+import type { ProgressoCursoUsuario } from "@/types/course";
 
 // --------------------------------------------------------------------------
 // INTERFACES / TIPOS
@@ -678,44 +683,40 @@ export async function buscarProgressoCurso(
 export async function getCursoAtual(
   uid: string,
 ): Promise<CursoProgresso | null> {
-  const progressos = await buscarProgressoUsuario(uid);
-  if (progressos.length === 0) {
-    const usuarioSnap = await getDoc(doc(db, "usuarios", uid));
-    const cursosProgresso = usuarioSnap.data()?.cursosProgresso as
-      | Record<
-          string,
-          {
-            cursoId: string;
-            titulo: string;
-            ultimoModuloId: string | null;
-            porcentagem: number;
-            atualizadoEm?: { seconds?: number };
-          }
-        >
-      | undefined;
+  const usuarioSnap = await getDoc(doc(db, "usuarios", uid));
+  const cursosProgresso = usuarioSnap.data()?.cursosProgresso as
+    | Record<string, ProgressoCursoUsuario>
+    | undefined;
+  const progressoAtualCatalogo = Object.values(cursosProgresso ?? {}).sort((a, b) => {
+    const getTime = (valor: unknown) => {
+      if (typeof valor === "string") return new Date(valor).getTime() || 0;
+      return ((valor as { seconds?: number } | undefined)?.seconds ?? 0) * 1000;
+    };
+    return getTime(b.atualizadoEm) - getTime(a.atualizadoEm);
+  })[0];
 
-    const progressoAtual = Object.values(cursosProgresso ?? {}).sort((a, b) => {
-      const aTime = a.atualizadoEm?.seconds ?? 0;
-      const bTime = b.atualizadoEm?.seconds ?? 0;
-      return bTime - aTime;
-    })[0];
-
-    if (!progressoAtual) return null;
-
-    const curso = buscarCursoCatalogo(progressoAtual.cursoId);
-    const modulo = progressoAtual.ultimoModuloId
+  if (progressoAtualCatalogo) {
+    const curso = buscarCursoCatalogo(progressoAtualCatalogo.cursoId);
+    const modulo = progressoAtualCatalogo.ultimoModuloId
       ? buscarModuloCatalogo(
-          progressoAtual.cursoId,
-          progressoAtual.ultimoModuloId,
+          progressoAtualCatalogo.cursoId,
+          progressoAtualCatalogo.ultimoModuloId,
         )?.modulo
       : null;
 
     return {
-      id: progressoAtual.cursoId,
-      titulo: curso?.titulo ?? progressoAtual.titulo,
+      id: progressoAtualCatalogo.cursoId,
+      titulo: curso?.titulo ?? progressoAtualCatalogo.titulo,
       aulaAtual: modulo?.titulo ?? "Iniciando...",
-      porcentagem: progressoAtual.porcentagem,
+      porcentagem: curso
+        ? calcularPorcentagemCurso(curso, progressoAtualCatalogo)
+        : Math.max(0, Math.min(1, progressoAtualCatalogo.porcentagem ?? 0)),
     };
+  }
+
+  const progressos = await buscarProgressoUsuario(uid);
+  if (progressos.length === 0) {
+    return null;
   }
 
   // Ordena por data de atualização
