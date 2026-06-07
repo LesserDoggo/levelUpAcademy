@@ -1,11 +1,12 @@
 import { onAuthStateChanged, signInAnonymously, signInWithCustomToken, type User } from "firebase/auth";
-import { firebaseAuth } from "./firebase";
+import { getFirebaseAuth } from "./firebase";
 
 export function observeAuth(callback: (user: User | null) => void) {
-  return onAuthStateChanged(firebaseAuth, callback);
+  return onAuthStateChanged(getFirebaseAuth(), callback);
 }
 
 export async function ensureGameAuth(customToken?: string) {
+  const firebaseAuth = getFirebaseAuth();
   if (customToken) {
     const credential = await signInWithCustomToken(firebaseAuth, customToken);
     return credential.user;

@@ -30,6 +30,7 @@ ios/build/
 .env
 .env.*
 !.env.example
+android/app/google-services.json
 
 # Logs and caches
 *.log

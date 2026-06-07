@@ -37,6 +37,12 @@ The output is written to the **dist** directory. The GitHub Actions workflow in 
 
 For project pages, the workflow sets `EXPO_BASE_URL` to the repository name so assets resolve correctly under `https://<user>.github.io/<repo>/`.
 
+## Local secrets and Firebase config
+
+Copy `.env.example` to `.env` and fill the Firebase values before running the Expo app locally. The embedded Phaser game does not keep Firebase keys in its generated bundle; standalone game builds should receive Firebase config at runtime through `window.LevelUpFirebaseConfig` if Firebase sync is needed.
+
+The Android `google-services.json` file is ignored by Git. Download it from Firebase and place it at `android/app/google-services.json` when building Android locally.
+
 ## Get a fresh project
 
 When you're ready, run:

@@ -3,7 +3,7 @@ import { DEFAULT_CLOTHES } from "../data/clothingData";
 import type { RoomFurnitureItem } from "../types/FurnitureTypes";
 import type { InventoryState } from "../types/InventoryTypes";
 import type { PlayerClothes } from "../types/PlayerTypes";
-import { firestoreDb } from "./firebase";
+import { getFirestoreDb } from "./firebase";
 
 export interface UserGameDocument {
   coins: number;
@@ -24,6 +24,7 @@ const defaultInventory: InventoryState = {
 };
 
 export async function readUserGameData(uid: string): Promise<UserGameDocument> {
+  const firestoreDb = getFirestoreDb();
   const gameSnapshot = await getDoc(doc(firestoreDb, "users", uid));
   const profileSnapshot = await getDoc(doc(firestoreDb, "usuarios", uid));
   const gameData = gameSnapshot.data() as Partial<UserGameDocument> | undefined;
@@ -38,6 +39,7 @@ export async function readUserGameData(uid: string): Promise<UserGameDocument> {
 }
 
 export async function writeUserGameData(uid: string, data: Partial<UserGameDocument>) {
+  const firestoreDb = getFirestoreDb();
   const { coins, ...gameData } = data;
   if (Object.keys(gameData).length > 0) {
     await setDoc(doc(firestoreDb, "users", uid), { ...gameData, updatedAt: serverTimestamp() }, { merge: true });

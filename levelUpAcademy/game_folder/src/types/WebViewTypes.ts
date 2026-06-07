@@ -26,5 +26,13 @@ declare global {
       postMessage: (message: string) => void;
     };
     LevelUpGameAssets?: Record<string, string>;
+    LevelUpFirebaseConfig?: {
+      apiKey: string;
+      authDomain: string;
+      projectId: string;
+      storageBucket: string;
+      messagingSenderId: string;
+      appId: string;
+    };
   }
 }
