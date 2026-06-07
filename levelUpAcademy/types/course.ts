@@ -30,6 +30,7 @@ export interface ParteConteudoMisto {
   id: string;
   tipo: "conteudo_misto";
   titulo: string;
+  descricao?: string;
   blocos: BlocoConteudoMisto[];
 }
 

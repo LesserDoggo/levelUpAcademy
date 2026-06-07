@@ -137,6 +137,7 @@ export class GameScene extends Phaser.Scene {
       this,
       () => this.confirmPlacement(),
       () => this.cancelPlacement(),
+      () => this.rotatePlacement(),
     );
     this.customizationUI.create(this, (itemId) => this.equipClothing(itemId));
     this.createFurnitureEditPanel();
@@ -264,6 +265,11 @@ export class GameScene extends Phaser.Scene {
     useGameStore.getState().stopPlacement();
     this.placementUI.setActive(false);
     postToNative({ type: "GAME_EVENT", event: "placement-cancelled" });
+  }
+
+  private rotatePlacement() {
+    this.gameManager.placement.rotate();
+    postToNative({ type: "GAME_EVENT", event: "placement-rotated" });
   }
 
   private async buyFurniture(itemId: string) {

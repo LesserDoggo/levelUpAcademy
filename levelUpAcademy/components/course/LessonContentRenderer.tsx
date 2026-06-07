@@ -63,6 +63,9 @@ function ConteudoMistoBlock({
   return (
     <View style={conteudoStyle.lessonBlock}>
       <Text style={conteudoStyle.lessonBlockTitle}>{parte.titulo}</Text>
+      {parte.descricao ? (
+        <Text style={conteudoStyle.lessonText}>{parte.descricao}</Text>
+      ) : null}
 
       {parte.blocos.map((bloco) => {
         if (bloco.tipo === "texto") {

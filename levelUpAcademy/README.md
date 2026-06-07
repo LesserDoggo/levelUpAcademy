@@ -25,6 +25,18 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Web build and GitHub Pages
+
+Generate the static web build with:
+
+```bash
+npm run build:web
+```
+
+The output is written to the **dist** directory. The GitHub Actions workflow in `.github/workflows/deploy-web.yml` builds the embedded game bundle, exports the Expo web app, and publishes `dist` to GitHub Pages on pushes to `main` or through manual dispatch.
+
+For project pages, the workflow sets `EXPO_BASE_URL` to the repository name so assets resolve correctly under `https://<user>.github.io/<repo>/`.
+
 ## Get a fresh project
 
 When you're ready, run:
